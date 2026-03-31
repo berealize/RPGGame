@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],    
+    "extra": {
+      "eas": {
+        "projectId": "bd3ee602-9519-44ee-b318-6a6bbffe5cc5"
+      }
+    },
+    "android": {
+      "package": "com.berealize.rpggameclient",
+      "permissions": ["INTERNET"]
+    }
+  }
+}
