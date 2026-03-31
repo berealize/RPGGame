@@ -1,12 +1,15 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 
 const GameContext = createContext(null);
 
-const SERVER_URL = 'http://221.162.168.243:3000'; // 실제 서버 주소로 변경
+const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL || 'http://localhost:3000';
 
 export function GameProvider({ children }) {
   const socketRef = useRef(null);
+  const notificationTimersRef = useRef(new Set());
+  const playerRef = useRef(null);
+
   const [connected, setConnected] = useState(false);
   const [player, setPlayer] = useState(null);
   const [combatLog, setCombatLog] = useState([]);
@@ -14,174 +17,264 @@ export function GameProvider({ children }) {
   const [dungeonState, setDungeonState] = useState(null);
   const [notifications, setNotifications] = useState([]);
 
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
   const addLog = useCallback((msg, type = 'info') => {
-    const entry = { id: Date.now() + Math.random(), msg, type, ts: new Date().toLocaleTimeString() };
-    setCombatLog(prev => [entry, ...prev].slice(0, 50));
+    const entry = {
+      id: `${Date.now()}-${Math.random()}`,
+      msg,
+      type,
+      ts: new Date().toLocaleTimeString(),
+    };
+    setCombatLog((prev) => [entry, ...prev].slice(0, 50));
   }, []);
 
   const addNotification = useCallback((message, type = 'info') => {
-    const notif = { id: Date.now(), message, type };
-    setNotifications(prev => [...prev, notif]);
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== notif.id)), 3000);
+    const id = `${Date.now()}-${Math.random()}`;
+    const timeoutId = setTimeout(() => {
+      setNotifications((prev) => prev.filter((item) => item.id !== id));
+      notificationTimersRef.current.delete(timeoutId);
+    }, 3000);
+
+    notificationTimersRef.current.add(timeoutId);
+    setNotifications((prev) => [...prev, { id, message, type }]);
   }, []);
 
   useEffect(() => {
-    const socket = io(SERVER_URL, { transports: ['websocket'] });
+    const socket = io(SERVER_URL, {
+      transports: ['websocket'],
+      autoConnect: true,
+    });
+
     socketRef.current = socket;
 
     socket.on('connect', () => {
       setConnected(true);
-      console.log('서버 연결됨:', socket.id);
+      addNotification('Connected to server.', 'success');
     });
 
     socket.on('disconnect', () => {
       setConnected(false);
-      addNotification('서버 연결이 끊어졌습니다.', 'error');
+      addNotification('Disconnected from server.', 'error');
     });
 
-    // 플레이어 이벤트
+    socket.on('error', ({ msg }) => {
+      addNotification(msg || 'An unknown error occurred.', 'error');
+    });
+
     socket.on('player:loginSuccess', (data) => {
       setPlayer(data);
-      addNotification(`${data.name}님, 환영합니다!`, 'success');
+      setCombatLog([]);
+      setDungeonState(null);
+      addNotification(`Welcome, ${data.name}.`, 'success');
     });
 
-    socket.on('player:levelUp', ({ level, stats }) => {
-      setPlayer(prev => prev ? { ...prev, level, stats } : prev);
-      addNotification(`🎉 레벨 업! Lv.${level}`, 'levelup');
-      addLog(`레벨 업! 현재 레벨: ${level}`, 'levelup');
+    socket.on('player:levelUp', ({ level, stats, player: updatedPlayer }) => {
+      setPlayer((prev) => (updatedPlayer ? updatedPlayer : prev ? { ...prev, level, stats } : prev));
+      addNotification(`Level up! You reached level ${level}.`, 'levelup');
+      addLog(`You are now level ${level}.`, 'levelup');
     });
 
     socket.on('player:rewardsGained', ({ exp, gold, item, player: updatedPlayer }) => {
-      if (updatedPlayer) setPlayer(updatedPlayer);
-      addLog(`보상 획득 - EXP: +${exp}, 골드: +${gold}${item ? `, 아이템: ${item.name}` : ''}`, 'reward');
+      if (updatedPlayer) {
+        setPlayer(updatedPlayer);
+      }
+
+      const parts = [`Rewards: EXP +${exp}`, `Gold +${gold}`];
+      if (item) {
+        parts.push(`Item: ${item.name}`);
+      }
+      addLog(parts.join(', '), 'reward');
     });
 
-    socket.on('player:mpUpdated', ({ currentMp }) => {
-      setPlayer(prev => prev ? { ...prev, currentMp } : prev);
+    socket.on('player:mpUpdated', ({ currentMp, player: updatedPlayer }) => {
+      setPlayer((prev) => (updatedPlayer ? updatedPlayer : prev ? { ...prev, currentMp } : prev));
     });
 
-    socket.on('player:equipUpdated', ({ equipment, stats }) => {
-      setPlayer(prev => prev ? { ...prev, equipment, stats } : prev);
-      addNotification('장비를 착용했습니다.', 'success');
+    socket.on('player:equipUpdated', ({ equipment, stats, inventory, player: updatedPlayer }) => {
+      setPlayer((prev) => (
+        updatedPlayer ? updatedPlayer : prev ? { ...prev, equipment, stats, inventory } : prev
+      ));
+      addNotification('Equipment updated.', 'success');
     });
 
     socket.on('player:died', ({ message }) => {
-      addNotification('💀 ' + message, 'error');
-      addLog('전투 불능 상태! 5초 후 부활합니다...', 'danger');
+      setPlayer((prev) => (prev ? { ...prev, currentHp: 0, isDead: true } : prev));
+      addNotification(message || 'You were defeated.', 'error');
+      addLog('You are down. Revival in 5 seconds.', 'danger');
     });
 
-    socket.on('player:revived', ({ currentHp }) => {
-      setPlayer(prev => prev ? { ...prev, currentHp } : prev);
-      addNotification('✨ 부활했습니다!', 'success');
+    socket.on('player:revived', ({ currentHp, player: updatedPlayer }) => {
+      setPlayer((prev) => (
+        updatedPlayer ? updatedPlayer : prev ? { ...prev, currentHp, isDead: false } : prev
+      ));
+      addNotification('You have been revived.', 'success');
     });
 
-    // 전투 이벤트
     socket.on('combat:attackResult', (data) => {
-      const { attackerId, targetName, damage, targetCurrentHp, targetMaxHp, targetDied } = data;
-      const isMe = player?.id === attackerId;
-      const who = isMe ? '내가' : '파티원이';
-      addLog(`${who} ${targetName}에게 ${damage} 데미지! (HP: ${targetCurrentHp}/${targetMaxHp})`, isMe ? 'attack' : 'party');
-      if (targetDied) addLog(`${targetName} 처치!`, 'kill');
+      const { attackerId, targetId, targetName, damage, targetCurrentHp, targetMaxHp, targetDied } = data;
+      const isMe = playerRef.current?.id === attackerId;
 
-      setDungeonState(prev => {
-        if (!prev) return prev;
-        const monsters = prev.monsters.map(m =>
-          m.id === data.targetId ? { ...m, hp: targetCurrentHp } : m
-        ).filter(m => m.hp > 0);
+      addLog(
+        `${isMe ? 'You' : 'Party'} hit ${targetName} for ${damage} damage (${targetCurrentHp}/${targetMaxHp}).`,
+        isMe ? 'attack' : 'party'
+      );
+
+      if (targetDied) {
+        addLog(`${targetName} was defeated.`, 'kill');
+      }
+
+      setDungeonState((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        const monsters = prev.monsters
+          .map((monster) => (monster.id === targetId ? { ...monster, hp: targetCurrentHp } : monster))
+          .filter((monster) => monster.hp > 0);
+
         return { ...prev, monsters };
       });
     });
 
     socket.on('combat:skillResult', (data) => {
-      addLog(`스킬 사용! ${data.targetName}에게 ${data.damage} 피해`, 'skill');
+      const isMe = playerRef.current?.id === data.caster;
+
+      addLog(
+        `${isMe ? 'You' : 'Party'} used ${data.skillId} on ${data.targetName} for ${data.damage} damage.`,
+        'skill'
+      );
+
+      setDungeonState((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        const monsters = prev.monsters
+          .map((monster) => (monster.id === data.targetId ? { ...monster, hp: data.targetCurrentHp } : monster))
+          .filter((monster) => monster.hp > 0);
+
+        return { ...prev, monsters };
+      });
     });
 
-    socket.on('combat:monsterAttack', ({ monsterName, targetName, damage, targetCurrentHp }) => {
-      const isMe = player?.name === targetName;
+    socket.on('combat:monsterAttack', ({ monsterName, targetId, targetName, damage, targetCurrentHp }) => {
+      const isMe = playerRef.current?.id === targetId;
+
       if (isMe) {
-        setPlayer(prev => prev ? { ...prev, currentHp: targetCurrentHp } : prev);
-        addLog(`${monsterName}의 공격! ${damage} 데미지 받음`, 'danger');
-      } else {
-        addLog(`${monsterName}가 ${targetName}를 공격 - ${damage} 데미지`, 'info');
+        setPlayer((prev) => (prev ? { ...prev, currentHp: targetCurrentHp } : prev));
       }
+
+      addLog(
+        `${monsterName} attacked ${isMe ? 'you' : targetName} for ${damage} damage.`,
+        isMe ? 'danger' : 'info'
+      );
     });
 
-    // 던전 이벤트
     socket.on('dungeon:entered', ({ dungeonId, room }) => {
       setDungeonState({ dungeonId, ...room });
-      addLog(`던전 입장: ${room.name}`, 'info');
+      addLog(`Entered ${room.name}.`, 'info');
     });
 
     socket.on('dungeon:left', () => {
       setDungeonState(null);
-      addLog('던전에서 나왔습니다.', 'info');
+      addLog('You left the dungeon.', 'info');
     });
 
     socket.on('dungeon:monstersSpawned', ({ monsters, wave }) => {
-      setDungeonState(prev => prev ? { ...prev, monsters, wave } : prev);
-      addLog(`웨이브 ${wave} 시작! 몬스터 ${monsters.length}마리 등장`, 'wave');
+      setDungeonState((prev) => (prev ? { ...prev, monsters, wave } : prev));
+      addLog(`Wave ${wave} started. ${monsters.length} monsters appeared.`, 'wave');
     });
 
     socket.on('dungeon:waveClear', ({ wave, nextWave }) => {
-      addLog(`웨이브 ${wave} 클리어! 다음 웨이브: ${nextWave}`, 'success');
-      addNotification(`웨이브 ${wave} 클리어!`, 'success');
+      addLog(`Wave ${wave} cleared. Next wave: ${nextWave}.`, 'success');
+      addNotification(`Wave ${wave} cleared.`, 'success');
     });
 
     socket.on('dungeon:bossSpawned', ({ boss }) => {
-      addLog(`⚠️ 보스 등장! ${boss.name} (HP: ${boss.hp})`, 'boss');
-      addNotification(`⚠️ 보스 ${boss.name} 등장!`, 'boss');
-      setDungeonState(prev => prev ? { ...prev, monsters: [{ ...boss, maxHp: boss.hp }] } : prev);
+      addLog(`Boss spawned: ${boss.name}.`, 'boss');
+      addNotification(`Boss ${boss.name} appeared.`, 'boss');
+      setDungeonState((prev) => (prev ? { ...prev, monsters: [{ ...boss, maxHp: boss.hp, isBoss: true }] } : prev));
     });
 
     socket.on('dungeon:playerJoined', ({ name }) => {
-      addLog(`${name}님이 파티에 합류했습니다.`, 'party');
+      addLog(`${name} joined the party.`, 'party');
     });
 
-    // 채팅
+    socket.on('dungeon:playerLeft', ({ playerId }) => {
+      if (playerRef.current?.id !== playerId) {
+        addLog('A party member left the dungeon.', 'info');
+      }
+    });
+
     socket.on('chat:message', (data) => {
-      setChatMessages(prev => [...prev, data].slice(-100));
+      setChatMessages((prev) => [...prev, data].slice(-100));
     });
 
-    return () => socket.disconnect();
+    return () => {
+      notificationTimersRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+      notificationTimersRef.current.clear();
+      socket.disconnect();
+    };
+  }, [addLog, addNotification]);
+
+  const emit = useCallback((event, payload) => {
+    socketRef.current?.emit(event, payload);
   }, []);
 
   const login = useCallback((name, characterClass) => {
-    socketRef.current?.emit('player:login', { name, characterClass });
-  }, []);
+    emit('player:login', { name, characterClass });
+  }, [emit]);
 
   const move = useCallback((x, y, map) => {
-    socketRef.current?.emit('player:move', { x, y, map });
-  }, []);
+    emit('player:move', { x, y, map });
+  }, [emit]);
 
   const attack = useCallback((targetId) => {
-    socketRef.current?.emit('player:attack', { targetId });
-  }, []);
+    emit('player:attack', { targetId });
+  }, [emit]);
 
   const useSkill = useCallback((skillId, targetId) => {
-    socketRef.current?.emit('player:useSkill', { skillId, targetId });
-  }, []);
+    emit('player:useSkill', { skillId, targetId });
+  }, [emit]);
 
   const equipItem = useCallback((itemId) => {
-    socketRef.current?.emit('player:equipItem', { itemId });
-  }, []);
+    emit('player:equipItem', { itemId });
+  }, [emit]);
 
   const sendChat = useCallback((message) => {
-    socketRef.current?.emit('chat:send', { message });
-  }, []);
+    emit('chat:send', { message });
+  }, [emit]);
 
   const enterDungeon = useCallback((dungeonId) => {
-    socketRef.current?.emit('dungeon:enter', { dungeonId });
-  }, []);
+    emit('dungeon:enter', { dungeonId });
+  }, [emit]);
 
   const leaveDungeon = useCallback(() => {
-    socketRef.current?.emit('dungeon:leave');
-  }, []);
+    emit('dungeon:leave');
+  }, [emit]);
 
   return (
-    <GameContext.Provider value={{
-      connected, player, combatLog, chatMessages, dungeonState, notifications,
-      login, move, attack, useSkill, equipItem, sendChat, enterDungeon, leaveDungeon,
-    }}>
+    <GameContext.Provider
+      value={{
+        connected,
+        player,
+        combatLog,
+        chatMessages,
+        dungeonState,
+        notifications,
+        login,
+        move,
+        attack,
+        useSkill,
+        equipItem,
+        sendChat,
+        enterDungeon,
+        leaveDungeon,
+      }}
+    >
       {children}
     </GameContext.Provider>
   );
@@ -189,6 +282,8 @@ export function GameProvider({ children }) {
 
 export const useGame = () => {
   const ctx = useContext(GameContext);
-  if (!ctx) throw new Error('useGame must be used within GameProvider');
+  if (!ctx) {
+    throw new Error('useGame must be used within GameProvider');
+  }
   return ctx;
 };

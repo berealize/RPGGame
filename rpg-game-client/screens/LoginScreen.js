@@ -1,80 +1,105 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, ImageBackground, Animated, ActivityIndicator,
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useGame } from '../context/GameContext';
 
 const CLASSES = [
-  { id: 'warrior', label: '전사', emoji: '⚔️', desc: '강인한 체력과 방어력', color: '#e74c3c' },
-  { id: 'mage',    label: '마법사', emoji: '🔮', desc: '강력한 마법 공격력', color: '#9b59b6' },
-  { id: 'archer',  label: '궁수', emoji: '🏹', desc: '빠른 속도와 원거리 공격', color: '#27ae60' },
-  { id: 'paladin', label: '성기사', emoji: '🛡️', desc: '균형잡힌 능력과 성스러운 힘', color: '#f39c12' },
+  { id: 'warrior', label: 'Warrior', icon: 'W', desc: 'High HP and defense.', color: '#e74c3c' },
+  { id: 'mage', label: 'Mage', icon: 'M', desc: 'High magic damage.', color: '#9b59b6' },
+  { id: 'archer', label: 'Archer', icon: 'A', desc: 'Fast multi-hit attacks.', color: '#27ae60' },
+  { id: 'paladin', label: 'Paladin', icon: 'P', desc: 'Balanced tank fighter.', color: '#f39c12' },
 ];
 
 export default function LoginScreen({ navigation }) {
-  const { login, connected } = useGame();
+  const { login, connected, player } = useGame();
   const [name, setName] = useState('');
   const [selectedClass, setSelectedClass] = useState('warrior');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    if (!name.trim()) return alert('캐릭터 이름을 입력해주세요.');
-    if (!connected) return alert('서버에 연결 중입니다...');
-    setLoading(true);
-    login(name.trim(), selectedClass);
-    setTimeout(() => {
+  useEffect(() => {
+    if (player) {
       setLoading(false);
       navigation.replace('Town');
-    }, 1000);
+    }
+  }, [navigation, player]);
+
+  const handleLogin = () => {
+    if (!name.trim() || !connected) {
+      return;
+    }
+
+    setLoading(true);
+    login(name.trim(), selectedClass);
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.titleBox}>
-        <Text style={styles.titleMain}>⚔️ REALM OF LEGENDS</Text>
-        <Text style={styles.titleSub}>전설의 왕국</Text>
+        <Text style={styles.titleMain}>REALM OF LEGENDS</Text>
+        <Text style={styles.titleSub}>Multiplayer dungeon crawler</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
-        <Text style={styles.label}>캐릭터 이름</Text>
+        <Text style={styles.label}>Character Name</Text>
         <TextInput
           style={styles.input}
-          placeholder="이름을 입력하세요"
+          placeholder="Enter your name"
           placeholderTextColor="#5a4a6a"
           value={name}
           onChangeText={setName}
           maxLength={12}
+          autoCapitalize="none"
         />
 
-        <Text style={styles.label}>직업 선택</Text>
+        <Text style={styles.label}>Class</Text>
         <View style={styles.classGrid}>
-          {CLASSES.map(cls => (
+          {CLASSES.map((cls) => (
             <TouchableOpacity
               key={cls.id}
-              style={[styles.classCard, selectedClass === cls.id && { ...styles.classCardSelected, borderColor: cls.color }]}
+              style={[
+                styles.classCard,
+                selectedClass === cls.id && {
+                  ...styles.classCardSelected,
+                  borderColor: cls.color,
+                },
+              ]}
               onPress={() => setSelectedClass(cls.id)}
             >
-              <Text style={styles.classEmoji}>{cls.emoji}</Text>
-              <Text style={[styles.className, selectedClass === cls.id && { color: cls.color }]}>{cls.label}</Text>
+              <Text style={styles.classEmoji}>{cls.icon}</Text>
+              <Text style={[styles.className, selectedClass === cls.id && { color: cls.color }]}>
+                {cls.label}
+              </Text>
               <Text style={styles.classDesc}>{cls.desc}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <TouchableOpacity
-          style={[styles.startBtn, loading && styles.startBtnDisabled]}
+          style={[styles.startBtn, (!connected || loading) && styles.startBtnDisabled]}
           onPress={handleLogin}
-          disabled={loading}
+          disabled={!connected || loading}
         >
-          {loading
-            ? <ActivityIndicator color="#1a0a2e" />
-            : <Text style={styles.startBtnText}>⚔️ 모험 시작</Text>
-          }
+          {loading ? (
+            <ActivityIndicator color="#1a0a2e" />
+          ) : (
+            <Text style={styles.startBtnText}>Enter Town</Text>
+          )}
         </TouchableOpacity>
 
-        <View style={[styles.statusDot, { backgroundColor: connected ? '#2ecc71' : '#e74c3c' }]}>
-          <Text style={styles.statusText}>{connected ? '서버 연결됨' : '연결 중...'}</Text>
+        <View
+          style={[
+            styles.statusDot,
+            { backgroundColor: connected ? '#2ecc71' : '#e74c3c' },
+          ]}
+        >
+          <Text style={styles.statusText}>{connected ? 'Server Connected' : 'Connecting...'}</Text>
         </View>
       </ScrollView>
     </View>
@@ -89,24 +114,48 @@ const styles = StyleSheet.create({
   form: { padding: 24 },
   label: { color: '#c0a0e0', fontSize: 14, marginBottom: 8, marginTop: 16 },
   input: {
-    backgroundColor: '#1a0a2e', borderWidth: 1, borderColor: '#4a2a6a',
-    borderRadius: 8, padding: 14, color: '#fff', fontSize: 16,
+    backgroundColor: '#1a0a2e',
+    borderWidth: 1,
+    borderColor: '#4a2a6a',
+    borderRadius: 8,
+    padding: 14,
+    color: '#fff',
+    fontSize: 16,
   },
   classGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
   classCard: {
-    width: '47%', backgroundColor: '#1a0a2e', borderRadius: 12,
-    borderWidth: 2, borderColor: '#2a1a3e', padding: 14, alignItems: 'center',
+    width: '47%',
+    backgroundColor: '#1a0a2e',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#2a1a3e',
+    padding: 14,
+    alignItems: 'center',
   },
   classCardSelected: { borderWidth: 2, backgroundColor: '#2a0a3e' },
-  classEmoji: { fontSize: 32, marginBottom: 6 },
+  classEmoji: { fontSize: 32, marginBottom: 6, color: '#ffffff' },
   className: { color: '#e0c0ff', fontWeight: 'bold', fontSize: 16 },
   classDesc: { color: '#7a5a9a', fontSize: 11, textAlign: 'center', marginTop: 4 },
   startBtn: {
-    backgroundColor: '#ffd700', borderRadius: 12, padding: 18,
-    alignItems: 'center', marginTop: 32, shadowColor: '#ffd700', shadowOpacity: 0.5, shadowRadius: 12,
+    backgroundColor: '#ffd700',
+    borderRadius: 12,
+    padding: 18,
+    alignItems: 'center',
+    marginTop: 32,
+    shadowColor: '#ffd700',
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
   },
   startBtnDisabled: { opacity: 0.6 },
   startBtnText: { color: '#1a0a2e', fontWeight: 'bold', fontSize: 18 },
-  statusDot: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, padding: 8, paddingHorizontal: 14, alignSelf: 'center', marginTop: 16 },
+  statusDot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    padding: 8,
+    paddingHorizontal: 14,
+    alignSelf: 'center',
+    marginTop: 16,
+  },
   statusText: { color: '#fff', fontSize: 12, marginLeft: 6 },
 });

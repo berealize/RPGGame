@@ -1,40 +1,50 @@
 const { v4: uuidv4 } = require('uuid');
 
 const MONSTERS = {
-  slime:    { name: '슬라임',    hp: 50,  atk: 8,  def: 2,  exp: 15, gold: 5,  lootTable: ['hp_potion'] },
-  goblin:   { name: '고블린',    hp: 80,  atk: 15, def: 5,  exp: 25, gold: 10, lootTable: ['iron_sword', 'hp_potion'] },
-  orc:      { name: '오크',      hp: 200, atk: 30, def: 15, exp: 60, gold: 25, lootTable: ['steel_armor', 'mp_potion'] },
-  skeleton: { name: '해골 전사', hp: 120, atk: 20, def: 10, exp: 40, gold: 18, lootTable: ['bone_shield'] },
-  dragon:   { name: '드래곤',    hp: 1000,atk: 80, def: 40, exp: 500,gold: 200,lootTable: ['dragon_scale', 'legendary_sword'] },
+  slime: { name: 'Slime', hp: 50, atk: 8, def: 2, exp: 15, gold: 5, lootTable: ['hp_potion'] },
+  goblin: { name: 'Goblin', hp: 80, atk: 15, def: 5, exp: 25, gold: 10, lootTable: ['iron_sword', 'hp_potion'] },
+  orc: { name: 'Orc', hp: 200, atk: 30, def: 15, exp: 60, gold: 25, lootTable: ['steel_armor', 'mp_potion'] },
+  skeleton: { name: 'Skeleton', hp: 120, atk: 20, def: 10, exp: 40, gold: 18, lootTable: ['bone_shield'] },
+  dragon: { name: 'Dragon', hp: 1000, atk: 80, def: 40, exp: 500, gold: 200, lootTable: ['dragon_scale', 'legendary_sword'] },
 };
 
 const ITEMS = {
-  hp_potion:       { id: 'hp_potion', name: '체력 물약', type: 'consumable', effect: { hp: 50 } },
-  mp_potion:       { id: 'mp_potion', name: '마나 물약', type: 'consumable', effect: { mp: 30 } },
-  iron_sword:      { id: 'iron_sword', name: '철제 검', type: 'equipment', slot: 'weapon', statBonus: { atk: 10 } },
-  steel_armor:     { id: 'steel_armor', name: '강철 갑옷', type: 'equipment', slot: 'armor', statBonus: { def: 15 } },
-  bone_shield:     { id: 'bone_shield', name: '뼈 방패', type: 'equipment', slot: 'accessory', statBonus: { def: 8 } },
-  dragon_scale:    { id: 'dragon_scale', name: '용의 비늘', type: 'equipment', slot: 'armor', statBonus: { def: 50, hp: 100 } },
-  legendary_sword: { id: 'legendary_sword', name: '전설의 검', type: 'equipment', slot: 'weapon', statBonus: { atk: 80 } },
+  hp_potion: { id: 'hp_potion', name: 'HP Potion', type: 'consumable', effect: { hp: 50 } },
+  mp_potion: { id: 'mp_potion', name: 'MP Potion', type: 'consumable', effect: { mp: 30 } },
+  iron_sword: { id: 'iron_sword', name: 'Iron Sword', type: 'equipment', slot: 'weapon', statBonus: { atk: 10 } },
+  steel_armor: { id: 'steel_armor', name: 'Steel Armor', type: 'equipment', slot: 'armor', statBonus: { def: 15 } },
+  bone_shield: { id: 'bone_shield', name: 'Bone Shield', type: 'equipment', slot: 'accessory', statBonus: { def: 8 } },
+  dragon_scale: { id: 'dragon_scale', name: 'Dragon Scale', type: 'equipment', slot: 'armor', statBonus: { def: 50, hp: 100 } },
+  legendary_sword: { id: 'legendary_sword', name: 'Legendary Sword', type: 'equipment', slot: 'weapon', statBonus: { atk: 80 } },
 };
 
 const DUNGEONS = {
-  beginner_cave:  { name: '초보자의 동굴', minLevel: 1,  maxPlayers: 4, monsters: ['slime', 'goblin'], bossMonster: 'orc' },
-  cursed_forest:  { name: '저주받은 숲',   minLevel: 5,  maxPlayers: 4, monsters: ['goblin', 'skeleton'], bossMonster: 'dragon' },
-  dragon_lair:    { name: '드래곤의 소굴', minLevel: 20, maxPlayers: 6, monsters: ['orc', 'skeleton'], bossMonster: 'dragon' },
+  beginner_cave: { name: 'Beginner Cave', minLevel: 1, maxPlayers: 4, monsters: ['slime', 'goblin'], bossMonster: 'orc' },
+  cursed_forest: { name: 'Cursed Forest', minLevel: 5, maxPlayers: 4, monsters: ['goblin', 'skeleton'], bossMonster: 'dragon' },
+  dragon_lair: { name: 'Dragon Lair', minLevel: 20, maxPlayers: 6, monsters: ['orc', 'skeleton'], bossMonster: 'dragon' },
 };
 
 class GameManager {
   constructor(io) {
     this.io = io;
-    this.rooms = new Map();   // dungeonId -> room
-    this.monsters = new Map(); // monsterId -> monster instance
+    this.rooms = new Map();
     this.spawnTimers = new Map();
+    this.reviveTimers = new Map();
+  }
+
+  getDungeonConfig(dungeonId) {
+    return DUNGEONS[dungeonId] || null;
   }
 
   joinRoom(dungeonId, player, socket) {
-    const config = DUNGEONS[dungeonId];
-    if (!config) return null;
+    const config = this.getDungeonConfig(dungeonId);
+    if (!config) {
+      return { ok: false, code: 'NOT_FOUND' };
+    }
+
+    if (player.level < config.minLevel) {
+      return { ok: false, code: 'LEVEL_TOO_LOW', minLevel: config.minLevel };
+    }
 
     if (!this.rooms.has(dungeonId)) {
       this.rooms.set(dungeonId, {
@@ -49,16 +59,27 @@ class GameManager {
     }
 
     const room = this.rooms.get(dungeonId);
-    if (room.players.size >= config.maxPlayers) return null;
+    if (room.players.size >= config.maxPlayers) {
+      return { ok: false, code: 'ROOM_FULL' };
+    }
 
     room.players.set(socket.id, player);
     socket.join(dungeonId);
-    return room;
+
+    return { ok: true, room };
   }
 
   leaveRoom(dungeonId, socketId) {
     const room = this.rooms.get(dungeonId);
-    if (!room) return;
+    if (!room) {
+      return;
+    }
+
+    const player = room.players.get(socketId);
+    if (player) {
+      this.clearReviveTimer(player.socketId);
+    }
+
     room.players.delete(socketId);
     if (room.players.size === 0) {
       this.cleanupRoom(dungeonId);
@@ -67,26 +88,40 @@ class GameManager {
 
   getRoomInfo(dungeonId) {
     const room = this.rooms.get(dungeonId);
-    if (!room) return null;
+    if (!room) {
+      return null;
+    }
+
     return {
       id: room.id,
       name: room.config.name,
       wave: room.wave,
-      monsters: room.monsters.map(m => ({ id: m.id, name: m.name, hp: m.currentHp, maxHp: m.hp, position: m.position })),
+      monsters: room.monsters.map((monster) => ({
+        id: monster.id,
+        name: monster.name,
+        hp: monster.currentHp,
+        maxHp: monster.hp,
+        position: monster.position,
+        isBoss: Boolean(monster.isBoss),
+      })),
       playerCount: room.players.size,
+      minLevel: room.config.minLevel,
     };
   }
 
   spawnMonsters(dungeonId) {
     const room = this.rooms.get(dungeonId);
-    if (!room) return;
+    if (!room) {
+      return;
+    }
 
-    const config = room.config;
+    this.clearSpawnTimer(dungeonId);
+
     const count = Math.min(3 + room.wave, 8);
-
     room.monsters = [];
-    for (let i = 0; i < count; i++) {
-      const monsterType = config.monsters[Math.floor(Math.random() * config.monsters.length)];
+
+    for (let index = 0; index < count; index += 1) {
+      const monsterType = room.config.monsters[Math.floor(Math.random() * room.config.monsters.length)];
       const base = MONSTERS[monsterType];
       const monster = {
         ...base,
@@ -95,76 +130,122 @@ class GameManager {
         currentHp: base.hp * room.wave,
         hp: base.hp * room.wave,
         atk: Math.floor(base.atk * (1 + (room.wave - 1) * 0.2)),
-        position: { x: Math.floor(Math.random() * 20), y: Math.floor(Math.random() * 20) },
+        position: {
+          x: Math.floor(Math.random() * 20),
+          y: Math.floor(Math.random() * 20),
+        },
       };
+
       room.monsters.push(monster);
     }
 
     this.io.to(dungeonId).emit('dungeon:monstersSpawned', {
-      monsters: room.monsters.map(m => ({ id: m.id, name: m.name, hp: m.currentHp, maxHp: m.hp, position: m.position })),
+      monsters: room.monsters.map((monster) => ({
+        id: monster.id,
+        name: monster.name,
+        hp: monster.currentHp,
+        maxHp: monster.hp,
+        position: monster.position,
+        isBoss: Boolean(monster.isBoss),
+      })),
       wave: room.wave,
     });
 
-    // 몬스터 AI: 주기적으로 가장 가까운 플레이어 공격
     const timer = setInterval(() => {
       this.monsterAI(dungeonId);
     }, 3000);
+
     this.spawnTimers.set(dungeonId, timer);
   }
 
   monsterAI(dungeonId) {
     const room = this.rooms.get(dungeonId);
-    if (!room || room.players.size === 0) return;
+    if (!room || room.players.size === 0) {
+      return;
+    }
 
-    const alivePlayers = [...room.players.values()].filter(p => p.currentHp > 0);
-    if (alivePlayers.length === 0) return;
+    const alivePlayers = [...room.players.values()].filter(
+      (player) => !player.isDead && player.currentHp > 0
+    );
 
-    room.monsters.filter(m => m.currentHp > 0).forEach(monster => {
-      const target = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
-      const damage = Math.max(1, monster.atk - (target.stats?.def || 0) + Math.floor(Math.random() * 5 - 2));
-      target.currentHp = Math.max(0, target.currentHp - damage);
+    if (alivePlayers.length === 0) {
+      return;
+    }
 
-      this.io.to(dungeonId).emit('combat:monsterAttack', {
-        monsterId: monster.id,
-        monsterName: monster.name,
-        targetId: target.id,
-        targetName: target.name,
-        damage,
-        targetCurrentHp: target.currentHp,
+    room.monsters
+      .filter((monster) => monster.currentHp > 0)
+      .forEach((monster) => {
+        const target = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+        const damage = Math.max(
+          1,
+          monster.atk - (target.stats?.def || 0) + Math.floor(Math.random() * 5 - 2)
+        );
+
+        target.currentHp = Math.max(0, target.currentHp - damage);
+
+        this.io.to(dungeonId).emit('combat:monsterAttack', {
+          monsterId: monster.id,
+          monsterName: monster.name,
+          targetId: target.id,
+          targetName: target.name,
+          damage,
+          targetCurrentHp: target.currentHp,
+        });
+
+        if (target.currentHp <= 0 && !target.isDead) {
+          target.isDead = true;
+          target.currentHp = 0;
+          this.io.to(target.socketId).emit('player:died', {
+            message: 'You were defeated in battle.',
+          });
+
+          this.clearReviveTimer(target.socketId);
+          const reviveTimer = setTimeout(() => {
+            const activeRoom = this.rooms.get(dungeonId);
+            const activePlayer = activeRoom?.players.get(target.socketId);
+            if (!activePlayer) {
+              return;
+            }
+
+            activePlayer.isDead = false;
+            activePlayer.currentHp = Math.max(1, Math.floor(activePlayer.stats.hp * 0.3));
+            this.reviveTimers.delete(target.socketId);
+            this.io.to(activePlayer.socketId).emit('player:revived', {
+              currentHp: activePlayer.currentHp,
+              player: this.getSafePlayer(activePlayer),
+            });
+          }, 5000);
+
+          this.reviveTimers.set(target.socketId, reviveTimer);
+        }
       });
-
-      if (target.currentHp <= 0) {
-        this.io.to(target.socketId).emit('player:died', { message: '전투에서 패배했습니다.' });
-        target.currentHp = Math.floor(target.stats.hp * 0.3); // 부활
-        setTimeout(() => {
-          this.io.to(target.socketId).emit('player:revived', { currentHp: target.currentHp });
-        }, 5000);
-      }
-    });
   }
 
   processAttack(attacker, targetId, skillId) {
-    // 몬스터 대상
-    let monster = null;
-    let targetRoom = null;
-
-    for (const [dungeonId, room] of this.rooms.entries()) {
-      const found = room.monsters.find(m => m.id === targetId);
-      if (found) { monster = found; targetRoom = { dungeonId, room }; break; }
+    if (!attacker.dungeonId) {
+      return null;
     }
 
-    if (!monster || monster.currentHp <= 0) return null;
+    const room = this.rooms.get(attacker.dungeonId);
+    if (!room || !room.players.has(attacker.socketId)) {
+      return null;
+    }
 
-    const skill = attacker.skills?.find(s => s.id === skillId);
-    const multiplier = skill?.multiplier || 1.0;
+    const monster = room.monsters.find((entry) => entry.id === targetId);
+    if (!monster || monster.currentHp <= 0) {
+      return null;
+    }
+
+    const skill = attacker.skills?.find((entry) => entry.id === skillId);
+    const multiplier = skill?.multiplier || 1;
     const hits = skill?.hits || 1;
 
     let totalDamage = 0;
-    for (let i = 0; i < hits; i++) {
-      const base = Math.floor((attacker.stats?.atk || 20) * multiplier);
+    for (let index = 0; index < hits; index += 1) {
+      const baseDamage = Math.floor((attacker.stats?.atk || 20) * multiplier);
       const variance = Math.floor(Math.random() * 10 - 5);
-      const dmg = Math.max(1, base - (monster.def || 0) + variance);
-      totalDamage += dmg;
+      const damage = Math.max(1, baseDamage - (monster.def || 0) + variance);
+      totalDamage += damage;
     }
 
     monster.currentHp = Math.max(0, monster.currentHp - totalDamage);
@@ -182,11 +263,10 @@ class GameManager {
 
     if (result.targetDied) {
       result.rewards = this.generateRewards(monster);
-      const { room, dungeonId } = targetRoom;
-      room.monsters = room.monsters.filter(m => m.id !== monster.id);
+      room.monsters = room.monsters.filter((entry) => entry.id !== monster.id);
 
       if (room.monsters.length === 0) {
-        this.handleWaveClear(dungeonId, room);
+        this.handleWaveClear(attacker.dungeonId, room);
       }
     }
 
@@ -194,11 +274,9 @@ class GameManager {
   }
 
   handleWaveClear(dungeonId, room) {
-    clearInterval(this.spawnTimers.get(dungeonId));
-    this.spawnTimers.delete(dungeonId);
+    this.clearSpawnTimer(dungeonId);
 
     if (!room.bossSpawned && room.wave >= 3) {
-      // 보스 소환
       const bossBase = MONSTERS[room.config.bossMonster];
       const boss = {
         ...bossBase,
@@ -210,14 +288,33 @@ class GameManager {
         atk: bossBase.atk * 2,
         position: { x: 10, y: 10 },
       };
+
       room.monsters = [boss];
       room.bossSpawned = true;
-      this.io.to(dungeonId).emit('dungeon:bossSpawned', { boss: { id: boss.id, name: boss.name, hp: boss.currentHp, maxHp: boss.hp } });
-    } else {
-      room.wave++;
-      this.io.to(dungeonId).emit('dungeon:waveClear', { wave: room.wave - 1, nextWave: room.wave });
-      setTimeout(() => this.spawnMonsters(dungeonId), 5000);
+
+      this.io.to(dungeonId).emit('dungeon:bossSpawned', {
+        boss: {
+          id: boss.id,
+          name: boss.name,
+          hp: boss.currentHp,
+          maxHp: boss.hp,
+          isBoss: true,
+        },
+      });
+      return;
     }
+
+    room.wave += 1;
+    this.io.to(dungeonId).emit('dungeon:waveClear', {
+      wave: room.wave - 1,
+      nextWave: room.wave,
+    });
+
+    setTimeout(() => {
+      if (this.rooms.has(dungeonId)) {
+        this.spawnMonsters(dungeonId);
+      }
+    }, 5000);
   }
 
   generateRewards(monster) {
@@ -236,11 +333,36 @@ class GameManager {
     return rewards;
   }
 
+  getSafePlayer(player) {
+    const { socketId, ...safePlayer } = player;
+    return safePlayer;
+  }
+
+  clearSpawnTimer(dungeonId) {
+    const timer = this.spawnTimers.get(dungeonId);
+    if (timer) {
+      clearInterval(timer);
+      this.spawnTimers.delete(dungeonId);
+    }
+  }
+
+  clearReviveTimer(socketId) {
+    const timer = this.reviveTimers.get(socketId);
+    if (timer) {
+      clearTimeout(timer);
+      this.reviveTimers.delete(socketId);
+    }
+  }
+
   cleanupRoom(dungeonId) {
-    clearInterval(this.spawnTimers.get(dungeonId));
-    this.spawnTimers.delete(dungeonId);
+    const room = this.rooms.get(dungeonId);
+    if (room) {
+      room.players.forEach((player) => this.clearReviveTimer(player.socketId));
+    }
+
+    this.clearSpawnTimer(dungeonId);
     this.rooms.delete(dungeonId);
-    console.log(`[던전 해제] ${dungeonId}`);
+    console.log(`[Dungeon closed] ${dungeonId}`);
   }
 }
 

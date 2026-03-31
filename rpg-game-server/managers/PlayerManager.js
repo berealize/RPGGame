@@ -1,10 +1,17 @@
 const { v4: uuidv4 } = require('uuid');
 
+const BASE_CLASSES = {
+  warrior: { hp: 200, mp: 50, atk: 30, def: 25, spd: 10 },
+  mage: { hp: 100, mp: 200, atk: 50, def: 10, spd: 15 },
+  archer: { hp: 150, mp: 100, atk: 40, def: 15, spd: 25 },
+  paladin: { hp: 180, mp: 80, atk: 25, def: 30, spd: 12 },
+};
+
 class PlayerManager {
   constructor(io, gameManager) {
     this.io = io;
     this.gameManager = gameManager;
-    this.players = new Map(); // socketId -> player
+    this.players = new Map();
   }
 
   handleConnection(socket) {
@@ -20,150 +27,270 @@ class PlayerManager {
 
   handleDisconnect(socket) {
     const player = this.players.get(socket.id);
-    if (player) {
-      if (player.dungeonId) {
-        this.gameManager.leaveRoom(player.dungeonId, socket.id);
-      }
-      this.players.delete(socket.id);
-      this.io.emit('world:playerLeft', { playerId: player.id, name: player.name });
+    if (!player) {
+      return;
     }
+
+    if (player.dungeonId) {
+      this.gameManager.leaveRoom(player.dungeonId, socket.id);
+    }
+
+    this.players.delete(socket.id);
+    this.io.emit('world:playerLeft', { playerId: player.id, name: player.name });
   }
 
   onLogin(socket, { name, characterClass }) {
-    const classes = {
-      warrior:  { hp: 200, mp: 50,  atk: 30, def: 25, spd: 10 },
-      mage:     { hp: 100, mp: 200, atk: 50, def: 10, spd: 15 },
-      archer:   { hp: 150, mp: 100, atk: 40, def: 15, spd: 25 },
-      paladin:  { hp: 180, mp: 80,  atk: 25, def: 30, spd: 12 },
-    };
-
-    const base = classes[characterClass] || classes.warrior;
+    const safeClass = BASE_CLASSES[characterClass] ? characterClass : 'warrior';
+    const baseStats = BASE_CLASSES[safeClass];
     const player = {
       id: uuidv4(),
       socketId: socket.id,
-      name: name || `모험가_${Math.floor(Math.random() * 9999)}`,
-      characterClass: characterClass || 'warrior',
+      name: (name || '').trim() || `Hero_${Math.floor(Math.random() * 9999)}`,
+      characterClass: safeClass,
       level: 1,
       exp: 0,
       expToNext: 100,
       gold: 50,
       position: { x: 0, y: 0, map: 'town' },
-      stats: { ...base },
-      currentHp: base.hp,
-      currentMp: base.mp,
-      skills: this.getDefaultSkills(characterClass),
+      stats: { ...baseStats },
+      currentHp: baseStats.hp,
+      currentMp: baseStats.mp,
+      skills: this.getDefaultSkills(safeClass),
       inventory: [],
       equipment: { weapon: null, armor: null, accessory: null },
       buffs: [],
       dungeonId: null,
+      isDead: false,
     };
 
     this.players.set(socket.id, player);
-    socket.emit('player:loginSuccess', player);
-    this.io.emit('world:playerJoined', { playerId: player.id, name: player.name, characterClass: player.characterClass });
-    console.log(`[로그인] ${player.name} (${player.characterClass})`);
+    socket.emit('player:loginSuccess', this.getSafePlayer(player));
+    this.io.emit('world:playerJoined', {
+      playerId: player.id,
+      name: player.name,
+      characterClass: player.characterClass,
+    });
+    console.log(`[Login] ${player.name} (${player.characterClass})`);
   }
 
   onMove(socket, { x, y, map }) {
     const player = this.players.get(socket.id);
-    if (!player) return;
+    if (!player) {
+      return;
+    }
+
     player.position = { x, y, map: map || player.position.map };
 
     if (player.dungeonId) {
       this.io.to(player.dungeonId).emit('player:moved', {
-        playerId: player.id, x, y, map: player.position.map
+        playerId: player.id,
+        x,
+        y,
+        map: player.position.map,
       });
-    } else {
-      socket.broadcast.emit('player:moved', {
-        playerId: player.id, x, y, map: player.position.map
-      });
+      return;
     }
+
+    socket.broadcast.emit('player:moved', {
+      playerId: player.id,
+      x,
+      y,
+      map: player.position.map,
+    });
   }
 
   onAttack(socket, { targetId }) {
     const attacker = this.players.get(socket.id);
-    if (!attacker) return;
+    if (!attacker) {
+      return;
+    }
+
+    if (!attacker.dungeonId) {
+      socket.emit('error', { msg: 'You can only attack inside a dungeon.' });
+      return;
+    }
+
+    if (attacker.isDead) {
+      socket.emit('error', { msg: 'You cannot attack while defeated.' });
+      return;
+    }
 
     const result = this.gameManager.processAttack(attacker, targetId, 'basic');
-    if (result) {
-      const room = attacker.dungeonId ? this.io.to(attacker.dungeonId) : this.io;
-      room.emit('combat:attackResult', result);
+    if (!result) {
+      socket.emit('error', { msg: 'The attack target is invalid.' });
+      return;
+    }
 
-      if (result.targetDied && result.rewards) {
-        this.applyRewards(attacker, result.rewards);
-        socket.emit('player:rewardsGained', { ...result.rewards, player: this.getSafePlayer(attacker) });
-      }
+    this.io.to(attacker.dungeonId).emit('combat:attackResult', result);
+
+    if (result.targetDied && result.rewards) {
+      this.applyRewards(attacker, result.rewards);
+      socket.emit('player:rewardsGained', {
+        ...result.rewards,
+        player: this.getSafePlayer(attacker),
+      });
     }
   }
 
   onUseSkill(socket, { skillId, targetId }) {
     const player = this.players.get(socket.id);
-    if (!player) return;
+    if (!player) {
+      return;
+    }
 
-    const skill = player.skills.find(s => s.id === skillId);
-    if (!skill) return socket.emit('error', { msg: '스킬을 찾을 수 없습니다.' });
-    if (player.currentMp < skill.mpCost) return socket.emit('error', { msg: 'MP가 부족합니다.' });
+    if (!player.dungeonId) {
+      socket.emit('error', { msg: 'You can only use skills inside a dungeon.' });
+      return;
+    }
+
+    if (player.isDead) {
+      socket.emit('error', { msg: 'You cannot use skills while defeated.' });
+      return;
+    }
+
+    const skill = player.skills.find((entry) => entry.id === skillId);
+    if (!skill) {
+      socket.emit('error', { msg: 'Skill not found.' });
+      return;
+    }
+
+    if (player.currentMp < skill.mpCost) {
+      socket.emit('error', { msg: 'Not enough MP.' });
+      return;
+    }
 
     player.currentMp -= skill.mpCost;
     const result = this.gameManager.processAttack(player, targetId, skillId);
-    if (result) {
-      const room = player.dungeonId ? this.io.to(player.dungeonId) : this.io;
-      room.emit('combat:skillResult', { caster: player.id, skillId, ...result });
-      socket.emit('player:mpUpdated', { currentMp: player.currentMp });
+    if (!result) {
+      player.currentMp += skill.mpCost;
+      socket.emit('error', { msg: 'The skill target is invalid.' });
+      return;
+    }
 
-      if (result.targetDied && result.rewards) {
-        this.applyRewards(player, result.rewards);
-        socket.emit('player:rewardsGained', { ...result.rewards, player: this.getSafePlayer(player) });
-      }
+    this.io.to(player.dungeonId).emit('combat:skillResult', {
+      caster: player.id,
+      skillId,
+      ...result,
+    });
+    socket.emit('player:mpUpdated', {
+      currentMp: player.currentMp,
+      player: this.getSafePlayer(player),
+    });
+
+    if (result.targetDied && result.rewards) {
+      this.applyRewards(player, result.rewards);
+      socket.emit('player:rewardsGained', {
+        ...result.rewards,
+        player: this.getSafePlayer(player),
+      });
     }
   }
 
   onEquipItem(socket, { itemId }) {
     const player = this.players.get(socket.id);
-    if (!player) return;
-    const item = player.inventory.find(i => i.id === itemId);
-    if (!item) return socket.emit('error', { msg: '아이템을 찾을 수 없습니다.' });
+    if (!player) {
+      return;
+    }
+
+    const item = player.inventory.find((entry) => entry.id === itemId);
+    if (!item) {
+      socket.emit('error', { msg: 'Item not found.' });
+      return;
+    }
+
+    if (item.type !== 'equipment' || !item.slot) {
+      socket.emit('error', { msg: 'That item cannot be equipped.' });
+      return;
+    }
+
+    const currentItem = player.equipment[item.slot];
+    if (currentItem) {
+      player.inventory.push(currentItem);
+    }
 
     player.equipment[item.slot] = item;
-    player.inventory = player.inventory.filter(i => i.id !== itemId);
+    player.inventory = player.inventory.filter((entry) => entry.id !== itemId);
     this.recalcStats(player);
-    socket.emit('player:equipUpdated', { equipment: player.equipment, stats: player.stats });
+
+    socket.emit('player:equipUpdated', {
+      equipment: player.equipment,
+      inventory: player.inventory,
+      stats: player.stats,
+      player: this.getSafePlayer(player),
+    });
   }
 
   onChat(socket, { message }) {
     const player = this.players.get(socket.id);
-    if (!player) return;
+    if (!player) {
+      return;
+    }
 
-    const payload = { playerId: player.id, name: player.name, message, ts: Date.now() };
+    const trimmed = (message || '').trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const payload = {
+      playerId: player.id,
+      name: player.name,
+      message: trimmed,
+      ts: Date.now(),
+    };
+
     if (player.dungeonId) {
       this.io.to(player.dungeonId).emit('chat:message', payload);
-    } else {
-      this.io.emit('chat:message', payload);
+      return;
     }
+
+    this.io.emit('chat:message', payload);
   }
 
   onEnterDungeon(socket, { dungeonId }) {
     const player = this.players.get(socket.id);
-    if (!player) return;
-
-    const room = this.gameManager.joinRoom(dungeonId, player, socket);
-    if (room) {
-      player.dungeonId = dungeonId;
-      socket.emit('dungeon:entered', { dungeonId, room: this.gameManager.getRoomInfo(dungeonId) });
-      this.io.to(dungeonId).emit('dungeon:playerJoined', { playerId: player.id, name: player.name });
-    } else {
-      socket.emit('error', { msg: '던전 입장 실패' });
+    if (!player) {
+      return;
     }
+
+    if (player.dungeonId) {
+      socket.emit('error', { msg: 'Leave your current dungeon first.' });
+      return;
+    }
+
+    const joinResult = this.gameManager.joinRoom(dungeonId, player, socket);
+    if (!joinResult?.ok) {
+      const messages = {
+        NOT_FOUND: 'Dungeon not found.',
+        LEVEL_TOO_LOW: `You need to be at least level ${joinResult?.minLevel}.`,
+        ROOM_FULL: 'The dungeon room is full.',
+      };
+
+      socket.emit('error', { msg: messages[joinResult?.code] || 'Failed to enter dungeon.' });
+      return;
+    }
+
+    player.dungeonId = dungeonId;
+    socket.emit('dungeon:entered', {
+      dungeonId,
+      room: this.gameManager.getRoomInfo(dungeonId),
+    });
+    this.io.to(dungeonId).emit('dungeon:playerJoined', {
+      playerId: player.id,
+      name: player.name,
+    });
   }
 
   onLeaveDungeon(socket) {
     const player = this.players.get(socket.id);
-    if (!player || !player.dungeonId) return;
+    if (!player || !player.dungeonId) {
+      return;
+    }
 
     const dungeonId = player.dungeonId;
     this.gameManager.leaveRoom(dungeonId, socket.id);
     socket.leave(dungeonId);
     player.dungeonId = null;
+    player.isDead = false;
     socket.emit('dungeon:left', {});
     this.io.to(dungeonId).emit('dungeon:playerLeft', { playerId: player.id });
   }
@@ -171,7 +298,9 @@ class PlayerManager {
   applyRewards(player, rewards) {
     player.gold += rewards.gold || 0;
     player.exp += rewards.exp || 0;
-    if (rewards.item) player.inventory.push(rewards.item);
+    if (rewards.item) {
+      player.inventory.push(rewards.item);
+    }
     this.checkLevelUp(player);
   }
 
@@ -180,58 +309,80 @@ class PlayerManager {
       player.exp -= player.expToNext;
       player.level += 1;
       player.expToNext = Math.floor(player.expToNext * 1.5);
-      player.stats.hp += 20; player.stats.atk += 5; player.stats.def += 3;
+      this.recalcStats(player);
       player.currentHp = player.stats.hp;
       player.currentMp = player.stats.mp;
-      this.io.to(player.socketId).emit('player:levelUp', { level: player.level, stats: player.stats });
-      console.log(`[레벨업] ${player.name} → Lv.${player.level}`);
+      this.io.to(player.socketId).emit('player:levelUp', {
+        level: player.level,
+        stats: player.stats,
+        player: this.getSafePlayer(player),
+      });
+      console.log(`[Level Up] ${player.name} -> Lv.${player.level}`);
     }
   }
 
   recalcStats(player) {
-    const base = { warrior: { hp:200, mp:50, atk:30, def:25, spd:10 }, mage: { hp:100, mp:200, atk:50, def:10, spd:15 }, archer: { hp:150, mp:100, atk:40, def:15, spd:25 }, paladin: { hp:180, mp:80, atk:25, def:30, spd:12 } };
-    const b = base[player.characterClass] || base.warrior;
-    player.stats = { ...b };
-    Object.values(player.equipment).filter(Boolean).forEach(item => {
-      if (item.statBonus) Object.entries(item.statBonus).forEach(([k, v]) => { player.stats[k] = (player.stats[k] || 0) + v; });
-    });
+    const base = BASE_CLASSES[player.characterClass] || BASE_CLASSES.warrior;
+    player.stats = { ...base };
+
+    Object.values(player.equipment)
+      .filter(Boolean)
+      .forEach((item) => {
+        if (!item.statBonus) {
+          return;
+        }
+
+        Object.entries(item.statBonus).forEach(([key, value]) => {
+          player.stats[key] = (player.stats[key] || 0) + value;
+        });
+      });
+
     player.stats.hp += (player.level - 1) * 20;
     player.stats.atk += (player.level - 1) * 5;
     player.stats.def += (player.level - 1) * 3;
+
+    player.currentHp = Math.min(player.currentHp, player.stats.hp);
+    player.currentMp = Math.min(player.currentMp, player.stats.mp);
   }
 
   getDefaultSkills(characterClass) {
     const skills = {
       warrior: [
-        { id: 'slash', name: '강베기', mpCost: 10, multiplier: 1.5, type: 'physical' },
-        { id: 'shield_bash', name: '방패 강타', mpCost: 15, multiplier: 1.2, type: 'physical', stun: true },
+        { id: 'slash', name: 'Slash', mpCost: 10, multiplier: 1.5, type: 'physical' },
+        { id: 'shield_bash', name: 'Shield Bash', mpCost: 15, multiplier: 1.2, type: 'physical', stun: true },
       ],
       mage: [
-        { id: 'fireball', name: '파이어볼', mpCost: 20, multiplier: 2.0, type: 'magic' },
-        { id: 'ice_lance', name: '얼음 창', mpCost: 25, multiplier: 1.8, type: 'magic', slow: true },
+        { id: 'fireball', name: 'Fireball', mpCost: 20, multiplier: 2, type: 'magic' },
+        { id: 'ice_lance', name: 'Ice Lance', mpCost: 25, multiplier: 1.8, type: 'magic', slow: true },
       ],
       archer: [
-        { id: 'piercing_shot', name: '관통 화살', mpCost: 15, multiplier: 1.7, type: 'physical' },
-        { id: 'multi_shot', name: '연속 사격', mpCost: 20, multiplier: 1.2, hits: 3, type: 'physical' },
+        { id: 'piercing_shot', name: 'Piercing Shot', mpCost: 15, multiplier: 1.7, type: 'physical' },
+        { id: 'multi_shot', name: 'Multi Shot', mpCost: 20, multiplier: 1.2, hits: 3, type: 'physical' },
       ],
       paladin: [
-        { id: 'holy_strike', name: '성스러운 타격', mpCost: 15, multiplier: 1.6, type: 'holy' },
-        { id: 'divine_shield', name: '신성 방어막', mpCost: 30, multiplier: 0, type: 'buff', buffType: 'shield' },
+        { id: 'holy_strike', name: 'Holy Strike', mpCost: 15, multiplier: 1.6, type: 'holy' },
+        { id: 'divine_shield', name: 'Divine Shield', mpCost: 30, multiplier: 0, type: 'buff', buffType: 'shield' },
       ],
     };
+
     return skills[characterClass] || skills.warrior;
   }
 
   getSafePlayer(player) {
-    const { socketId, ...safe } = player;
-    return safe;
+    const { socketId, ...safePlayer } = player;
+    return safePlayer;
   }
 
   getLeaderboard() {
     return [...this.players.values()]
-      .sort((a, b) => b.level - a.level || b.exp - a.exp)
+      .sort((left, right) => right.level - left.level || right.exp - left.exp)
       .slice(0, 10)
-      .map(p => ({ name: p.name, level: p.level, characterClass: p.characterClass, gold: p.gold }));
+      .map((player) => ({
+        name: player.name,
+        level: player.level,
+        characterClass: player.characterClass,
+        gold: player.gold,
+      }));
   }
 }
 
