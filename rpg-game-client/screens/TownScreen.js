@@ -19,9 +19,15 @@ const DUNGEONS = [
 ];
 
 export default function TownScreen({ navigation }) {
-  const { player, chatMessages, sendChat, enterDungeon, notifications, dungeonState } = useGame();
+  const { player, chatMessages, sendChat, enterDungeon, notifications, dungeonState, connectionState } = useGame();
   const [chatInput, setChatInput] = useState('');
   const [activeTab, setActiveTab] = useState('dungeon');
+
+  useEffect(() => {
+    if (!player) {
+      navigation.replace('Login');
+    }
+  }, [navigation, player]);
 
   useEffect(() => {
     if (dungeonState) {
@@ -81,6 +87,9 @@ export default function TownScreen({ navigation }) {
           <Text style={styles.statHp}>HP {player.currentHp}/{player.stats.hp}</Text>
           <Text style={styles.statMp}>MP {player.currentMp}/{player.stats.mp}</Text>
           <Text style={styles.statGold}>Gold {player.gold}</Text>
+          <Text style={styles.statConn}>
+            {connectionState === 'connected' ? 'Online' : connectionState === 'reconnecting' ? 'Reconnecting' : 'Offline'}
+          </Text>
         </View>
         <TouchableOpacity
           onPress={() => navigation.navigate('Character')}
@@ -202,6 +211,7 @@ const styles = StyleSheet.create({
   statHp: { color: '#e74c3c', fontSize: 12 },
   statMp: { color: '#3498db', fontSize: 12 },
   statGold: { color: '#f1c40f', fontSize: 12 },
+  statConn: { color: '#9be7c4', fontSize: 12 },
   charBtn: { backgroundColor: '#2a1a4e', padding: 10, borderRadius: 8 },
   charBtnText: { color: '#ffffff', fontWeight: 'bold' },
   expBarBg: { height: 18, backgroundColor: '#1a0a2e', position: 'relative' },

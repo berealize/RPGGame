@@ -13,6 +13,12 @@ export default function DungeonScreen({ navigation }) {
   const { player, dungeonState, combatLog, attack, useSkill, leaveDungeon } = useGame();
   const [selectedTarget, setSelectedTarget] = useState(null);
 
+  useEffect(() => {
+    if (!player) {
+      navigation.replace('Login');
+    }
+  }, [navigation, player]);
+
   const selectedMonster = useMemo(
     () => (dungeonState?.monsters || []).find((monster) => monster.id === selectedTarget) || null,
     [dungeonState?.monsters, selectedTarget]

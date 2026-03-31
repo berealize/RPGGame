@@ -9,8 +9,13 @@ export function GameProvider({ children }) {
   const socketRef = useRef(null);
   const notificationTimersRef = useRef(new Set());
   const playerRef = useRef(null);
+  const authRef = useRef(null);
+  const authReadyRef = useRef(false);
 
   const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState('connecting');
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [authLoading, setAuthLoading] = useState(false);
   const [player, setPlayer] = useState(null);
   const [combatLog, setCombatLog] = useState([]);
   const [chatMessages, setChatMessages] = useState([]);
@@ -46,31 +51,72 @@ export function GameProvider({ children }) {
     const socket = io(SERVER_URL, {
       transports: ['websocket'],
       autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
 
     socketRef.current = socket;
+    const manager = socket.io;
 
     socket.on('connect', () => {
       setConnected(true);
-      addNotification('Connected to server.', 'success');
+      setConnectionState('connected');
+      setReconnectAttempts(0);
+
+      if (authReadyRef.current && authRef.current) {
+        socket.emit('account:login', authRef.current);
+        setAuthLoading(true);
+      } else {
+        addNotification('Connected to server.', 'success');
+      }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
       setConnected(false);
-      addNotification('Disconnected from server.', 'error');
+      setConnectionState(reason === 'io client disconnect' ? 'disconnected' : 'reconnecting');
+      setAuthLoading(false);
+      if (reason !== 'io client disconnect') {
+        addNotification('Connection lost. Reconnecting...', 'error');
+      }
+    });
+
+    socket.on('connect_error', () => {
+      setConnected(false);
+      setConnectionState('reconnecting');
     });
 
     socket.on('error', ({ msg }) => {
+      setAuthLoading(false);
       addNotification(msg || 'An unknown error occurred.', 'error');
+
+      if ((msg || '') === 'Invalid account ID or password.') {
+        authReadyRef.current = false;
+        authRef.current = null;
+        setPlayer(null);
+        setDungeonState(null);
+      }
     });
 
     socket.on('player:loginSuccess', (data) => {
-      setPlayer(data);
-      setCombatLog([]);
-      setChatMessages([]);
-      setNotifications([]);
-      setDungeonState(null);
-      addNotification(`Welcome, ${data.name}.`, 'success');
+      const { restored, ...safeData } = data;
+      authReadyRef.current = true;
+      setAuthLoading(false);
+      setPlayer(safeData);
+
+      if (!restored) {
+        setCombatLog([]);
+        setChatMessages([]);
+        setNotifications([]);
+        setDungeonState(null);
+        addNotification(`Welcome, ${safeData.name}.`, 'success');
+      } else {
+        if (!safeData.dungeonId) {
+          setDungeonState(null);
+        }
+        addNotification(`Session restored for ${safeData.name}.`, 'success');
+      }
     });
 
     socket.on('player:levelUp', ({ level, stats, player: updatedPlayer }) => {
@@ -223,7 +269,22 @@ export function GameProvider({ children }) {
       setChatMessages((prev) => [...prev, data].slice(-100));
     });
 
+    manager.on('reconnect_attempt', (attempt) => {
+      setConnectionState('reconnecting');
+      setReconnectAttempts(attempt);
+    });
+
+    manager.on('reconnect_failed', () => {
+      setConnectionState('disconnected');
+      addNotification('Unable to reconnect to the server.', 'error');
+    });
+
+    manager.on('reconnect_error', () => {
+      setConnectionState('reconnecting');
+    });
+
     return () => {
+      manager.removeAllListeners();
       socket.removeAllListeners();
       notificationTimersRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
       notificationTimersRef.current.clear();
@@ -235,8 +296,16 @@ export function GameProvider({ children }) {
     socketRef.current?.emit(event, payload);
   }, []);
 
-  const login = useCallback((name, characterClass) => {
-    emit('player:login', { name, characterClass });
+  const register = useCallback((accountName, password, name, characterClass) => {
+    authRef.current = { accountName, password };
+    setAuthLoading(true);
+    emit('account:register', { accountName, password, name, characterClass });
+  }, [emit]);
+
+  const login = useCallback((accountName, password) => {
+    authRef.current = { accountName, password };
+    setAuthLoading(true);
+    emit('account:login', { accountName, password });
   }, [emit]);
 
   const move = useCallback((x, y, map) => {
@@ -271,11 +340,15 @@ export function GameProvider({ children }) {
     <GameContext.Provider
       value={{
         connected,
+        connectionState,
+        reconnectAttempts,
+        authLoading,
         player,
         combatLog,
         chatMessages,
         dungeonState,
         notifications,
+        register,
         login,
         move,
         attack,

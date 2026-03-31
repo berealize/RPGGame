@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -30,9 +30,15 @@ const CLASS_ICONS = {
   paladin: 'P',
 };
 
-export default function CharacterScreen() {
+export default function CharacterScreen({ navigation }) {
   const { player, equipItem } = useGame();
   const [activeTab, setActiveTab] = useState('stats');
+
+  useEffect(() => {
+    if (!player) {
+      navigation.replace('Login');
+    }
+  }, [navigation, player]);
 
   if (!player) {
     return null;

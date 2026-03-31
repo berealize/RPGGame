@@ -8,6 +8,9 @@ const BASE_CLASSES = {
 };
 
 const NAME_MAX_LENGTH = 12;
+const ACCOUNT_MIN_LENGTH = 3;
+const ACCOUNT_MAX_LENGTH = 20;
+const PASSWORD_MIN_LENGTH = 4;
 const CHAT_MAX_LENGTH = 180;
 const WORLD_BOUNDS = { min: 0, max: 100 };
 
@@ -19,6 +22,14 @@ function sanitizePlayerName(name) {
     .slice(0, NAME_MAX_LENGTH);
 
   return cleaned || fallback;
+}
+
+function sanitizeAccountName(accountName) {
+  return String(accountName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, ACCOUNT_MAX_LENGTH);
 }
 
 function sanitizeCoordinate(value) {
@@ -34,10 +45,13 @@ class PlayerManager {
     this.io = io;
     this.gameManager = gameManager;
     this.players = new Map();
+    this.accounts = new Map();
+    this.accountSessions = new Map();
   }
 
   handleConnection(socket) {
-    socket.on('player:login', (data) => this.onLogin(socket, data));
+    socket.on('account:register', (data) => this.onRegister(socket, data));
+    socket.on('account:login', (data) => this.onAccountLogin(socket, data));
     socket.on('player:move', (data) => this.onMove(socket, data));
     socket.on('player:attack', (data) => this.onAttack(socket, data));
     socket.on('player:useSkill', (data) => this.onUseSkill(socket, data));
@@ -55,18 +69,75 @@ class PlayerManager {
 
     if (player.dungeonId) {
       this.gameManager.leaveRoom(player.dungeonId, socket.id);
+      this.resetPlayerToTown(player);
     }
 
+    player.socketId = null;
+    player.online = false;
     this.players.delete(socket.id);
+
+    if (player.accountName && this.accountSessions.get(player.accountName) === socket.id) {
+      this.accountSessions.delete(player.accountName);
+    }
+
     this.io.emit('world:playerLeft', { playerId: player.id, name: player.name });
   }
 
-  onLogin(socket, { name, characterClass }) {
+  onRegister(socket, { accountName, password, name, characterClass }) {
+    const safeAccountName = sanitizeAccountName(accountName);
+    if (safeAccountName.length < ACCOUNT_MIN_LENGTH) {
+      socket.emit('error', { msg: `Account ID must be ${ACCOUNT_MIN_LENGTH}-${ACCOUNT_MAX_LENGTH} characters.` });
+      return;
+    }
+
+    if (String(password || '').length < PASSWORD_MIN_LENGTH) {
+      socket.emit('error', { msg: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
+      return;
+    }
+
+    if (this.accounts.has(safeAccountName)) {
+      socket.emit('error', { msg: 'That account ID is already in use.' });
+      return;
+    }
+
+    const player = this.createPlayer(socket.id, safeAccountName, name, characterClass);
+    this.accounts.set(safeAccountName, {
+      accountName: safeAccountName,
+      password: String(password),
+      player,
+      createdAt: Date.now(),
+      lastLoginAt: Date.now(),
+    });
+
+    this.attachPlayerToSocket(socket, player);
+    this.emitLoginSuccess(socket, player, { created: true, restored: false });
+    console.log(`[Account Created] ${safeAccountName} -> ${player.name} (${player.characterClass})`);
+  }
+
+  onAccountLogin(socket, { accountName, password }) {
+    const safeAccountName = sanitizeAccountName(accountName);
+    const account = this.accounts.get(safeAccountName);
+
+    if (!account || account.password !== String(password || '')) {
+      socket.emit('error', { msg: 'Invalid account ID or password.' });
+      return;
+    }
+
+    this.attachPlayerToSocket(socket, account.player);
+    account.lastLoginAt = Date.now();
+    this.emitLoginSuccess(socket, account.player, { created: false, restored: true });
+    console.log(`[Login] ${safeAccountName} -> ${account.player.name}`);
+  }
+
+  createPlayer(socketId, accountName, name, characterClass) {
     const safeClass = BASE_CLASSES[characterClass] ? characterClass : 'warrior';
     const baseStats = BASE_CLASSES[safeClass];
-    const player = {
+
+    return {
       id: uuidv4(),
-      socketId: socket.id,
+      accountName,
+      socketId,
+      online: true,
       name: sanitizePlayerName(name),
       characterClass: safeClass,
       level: 1,
@@ -84,19 +155,49 @@ class PlayerManager {
       dungeonId: null,
       isDead: false,
     };
+  }
 
+  attachPlayerToSocket(socket, player) {
+    const previousSocketId = this.accountSessions.get(player.accountName);
+    if (previousSocketId && previousSocketId !== socket.id) {
+      this.players.delete(previousSocketId);
+      const previousSocket = this.io.sockets.sockets.get(previousSocketId);
+      if (previousSocket) {
+        previousSocket.disconnect(true);
+      }
+    }
+
+    player.socketId = socket.id;
+    player.online = true;
     this.players.set(socket.id, player);
-    socket.emit('player:loginSuccess', this.getSafePlayer(player));
+    this.accountSessions.set(player.accountName, socket.id);
+  }
+
+  emitLoginSuccess(socket, player, meta = {}) {
+    socket.emit('player:loginSuccess', {
+      ...this.getSafePlayer(player),
+      ...meta,
+    });
+
     this.io.emit('world:playerJoined', {
       playerId: player.id,
       name: player.name,
       characterClass: player.characterClass,
     });
-    console.log(`[Login] ${player.name} (${player.characterClass})`);
+  }
+
+  getPlayerBySocket(socket) {
+    return this.players.get(socket.id) || null;
+  }
+
+  resetPlayerToTown(player) {
+    player.dungeonId = null;
+    player.isDead = false;
+    player.position = { ...player.position, map: 'town', x: 0, y: 0 };
   }
 
   onMove(socket, { x, y, map }) {
-    const player = this.players.get(socket.id);
+    const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
     }
@@ -126,7 +227,7 @@ class PlayerManager {
   }
 
   onAttack(socket, { targetId }) {
-    const attacker = this.players.get(socket.id);
+    const attacker = this.getPlayerBySocket(socket);
     if (!attacker) {
       return;
     }
@@ -159,7 +260,7 @@ class PlayerManager {
   }
 
   onUseSkill(socket, { skillId, targetId }) {
-    const player = this.players.get(socket.id);
+    const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
     }
@@ -213,7 +314,7 @@ class PlayerManager {
   }
 
   onEquipItem(socket, { itemId }) {
-    const player = this.players.get(socket.id);
+    const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
     }
@@ -247,7 +348,7 @@ class PlayerManager {
   }
 
   onChat(socket, { message }) {
-    const player = this.players.get(socket.id);
+    const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
     }
@@ -273,7 +374,7 @@ class PlayerManager {
   }
 
   onEnterDungeon(socket, { dungeonId }) {
-    const player = this.players.get(socket.id);
+    const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
     }
@@ -307,7 +408,7 @@ class PlayerManager {
   }
 
   onLeaveDungeon(socket) {
-    const player = this.players.get(socket.id);
+    const player = this.getPlayerBySocket(socket);
     if (!player || !player.dungeonId) {
       return;
     }
@@ -315,9 +416,7 @@ class PlayerManager {
     const dungeonId = player.dungeonId;
     this.gameManager.leaveRoom(dungeonId, socket.id);
     socket.leave(dungeonId);
-    player.dungeonId = null;
-    player.isDead = false;
-    player.position = { ...player.position, map: 'town', x: 0, y: 0 };
+    this.resetPlayerToTown(player);
     socket.emit('dungeon:left', {});
     this.io.to(dungeonId).emit('dungeon:playerLeft', { playerId: player.id });
   }
@@ -396,12 +495,13 @@ class PlayerManager {
   }
 
   getSafePlayer(player) {
-    const { socketId, ...safePlayer } = player;
+    const { socketId, online, ...safePlayer } = player;
     return safePlayer;
   }
 
   getLeaderboard() {
-    return [...this.players.values()]
+    return [...this.accounts.values()]
+      .map((account) => account.player)
       .sort((left, right) => right.level - left.level || right.exp - left.exp)
       .slice(0, 10)
       .map((player) => ({
