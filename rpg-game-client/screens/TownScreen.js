@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,9 +19,15 @@ const DUNGEONS = [
 ];
 
 export default function TownScreen({ navigation }) {
-  const { player, chatMessages, sendChat, enterDungeon, notifications } = useGame();
+  const { player, chatMessages, sendChat, enterDungeon, notifications, dungeonState } = useGame();
   const [chatInput, setChatInput] = useState('');
   const [activeTab, setActiveTab] = useState('dungeon');
+
+  useEffect(() => {
+    if (dungeonState) {
+      navigation.navigate('Dungeon');
+    }
+  }, [dungeonState, navigation]);
 
   if (!player) {
     return null;
@@ -42,7 +48,6 @@ export default function TownScreen({ navigation }) {
           text: 'Enter',
           onPress: () => {
             enterDungeon(dungeon.id);
-            navigation.navigate('Dungeon');
           },
         },
       ]

@@ -67,6 +67,8 @@ export function GameProvider({ children }) {
     socket.on('player:loginSuccess', (data) => {
       setPlayer(data);
       setCombatLog([]);
+      setChatMessages([]);
+      setNotifications([]);
       setDungeonState(null);
       addNotification(`Welcome, ${data.name}.`, 'success');
     });
@@ -175,11 +177,13 @@ export function GameProvider({ children }) {
 
     socket.on('dungeon:entered', ({ dungeonId, room }) => {
       setDungeonState({ dungeonId, ...room });
+      setPlayer((prev) => (prev ? { ...prev, dungeonId } : prev));
       addLog(`Entered ${room.name}.`, 'info');
     });
 
     socket.on('dungeon:left', () => {
       setDungeonState(null);
+      setPlayer((prev) => (prev ? { ...prev, dungeonId: null, isDead: false } : prev));
       addLog('You left the dungeon.', 'info');
     });
 
@@ -199,6 +203,12 @@ export function GameProvider({ children }) {
       setDungeonState((prev) => (prev ? { ...prev, monsters: [{ ...boss, maxHp: boss.hp, isBoss: true }] } : prev));
     });
 
+    socket.on('dungeon:cleared', ({ name, bossName }) => {
+      setDungeonState((prev) => (prev ? { ...prev, monsters: [] } : prev));
+      addLog(`${name} cleared. ${bossName} was defeated.`, 'success');
+      addNotification(`${name} clear complete.`, 'success');
+    });
+
     socket.on('dungeon:playerJoined', ({ name }) => {
       addLog(`${name} joined the party.`, 'party');
     });
@@ -214,6 +224,7 @@ export function GameProvider({ children }) {
     });
 
     return () => {
+      socket.removeAllListeners();
       notificationTimersRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
       notificationTimersRef.current.clear();
       socket.disconnect();

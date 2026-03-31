@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -17,6 +17,17 @@ export default function DungeonScreen({ navigation }) {
     () => (dungeonState?.monsters || []).find((monster) => monster.id === selectedTarget) || null,
     [dungeonState?.monsters, selectedTarget]
   );
+
+  useEffect(() => {
+    if (!selectedTarget) {
+      return;
+    }
+
+    const exists = (dungeonState?.monsters || []).some((monster) => monster.id === selectedTarget);
+    if (!exists) {
+      setSelectedTarget(null);
+    }
+  }, [dungeonState?.monsters, selectedTarget]);
 
   const handleLeave = () => {
     Alert.alert('Leave Dungeon', 'Do you want to leave this dungeon?', [
@@ -59,6 +70,17 @@ export default function DungeonScreen({ navigation }) {
     return null;
   }
 
+  if (!dungeonState) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyTitle}>No active dungeon</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backBtnText}>Back to Town</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const hpPercent = Math.max(0, (player.currentHp / player.stats.hp) * 100);
   const mpPercent = Math.max(0, (player.currentMp / player.stats.mp) * 100);
 
@@ -89,18 +111,16 @@ export default function DungeonScreen({ navigation }) {
         </View>
       </View>
 
-      {dungeonState && (
-        <View style={styles.dungeonInfo}>
-          <Text style={styles.dungeonName}>
-            {dungeonState.name} - Wave {dungeonState.wave}
+      <View style={styles.dungeonInfo}>
+        <Text style={styles.dungeonName}>
+          {dungeonState.name} - Wave {dungeonState.wave}
+        </Text>
+        {selectedMonster && (
+          <Text style={styles.selectedTarget}>
+            Target: {selectedMonster.name} ({selectedMonster.hp}/{selectedMonster.maxHp})
           </Text>
-          {selectedMonster && (
-            <Text style={styles.selectedTarget}>
-              Target: {selectedMonster.name} ({selectedMonster.hp}/{selectedMonster.maxHp})
-            </Text>
-          )}
-        </View>
-      )}
+        )}
+      </View>
 
       <View style={styles.monstersSection}>
         <Text style={styles.sectionTitle}>Monsters</Text>
@@ -172,6 +192,10 @@ export default function DungeonScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0d0618' },
+  emptyContainer: { flex: 1, backgroundColor: '#0d0618', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  emptyTitle: { color: '#e0c0ff', fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
+  backBtn: { backgroundColor: '#2a1a4e', borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12 },
+  backBtnText: { color: '#ffd700', fontWeight: 'bold' },
   playerStatus: {
     backgroundColor: '#1a0a2e',
     padding: 14,

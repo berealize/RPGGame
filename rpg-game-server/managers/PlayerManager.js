@@ -7,6 +7,28 @@ const BASE_CLASSES = {
   paladin: { hp: 180, mp: 80, atk: 25, def: 30, spd: 12 },
 };
 
+const NAME_MAX_LENGTH = 12;
+const CHAT_MAX_LENGTH = 180;
+const WORLD_BOUNDS = { min: 0, max: 100 };
+
+function sanitizePlayerName(name) {
+  const fallback = `Hero_${Math.floor(Math.random() * 9999)}`;
+  const cleaned = String(name || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, NAME_MAX_LENGTH);
+
+  return cleaned || fallback;
+}
+
+function sanitizeCoordinate(value) {
+  if (!Number.isFinite(value)) {
+    return WORLD_BOUNDS.min;
+  }
+
+  return Math.max(WORLD_BOUNDS.min, Math.min(WORLD_BOUNDS.max, Math.round(value)));
+}
+
 class PlayerManager {
   constructor(io, gameManager) {
     this.io = io;
@@ -45,7 +67,7 @@ class PlayerManager {
     const player = {
       id: uuidv4(),
       socketId: socket.id,
-      name: (name || '').trim() || `Hero_${Math.floor(Math.random() * 9999)}`,
+      name: sanitizePlayerName(name),
       characterClass: safeClass,
       level: 1,
       exp: 0,
@@ -79,13 +101,17 @@ class PlayerManager {
       return;
     }
 
-    player.position = { x, y, map: map || player.position.map };
+    player.position = {
+      x: sanitizeCoordinate(x),
+      y: sanitizeCoordinate(y),
+      map: typeof map === 'string' && map.trim() ? map.trim() : player.position.map,
+    };
 
     if (player.dungeonId) {
       this.io.to(player.dungeonId).emit('player:moved', {
         playerId: player.id,
-        x,
-        y,
+        x: player.position.x,
+        y: player.position.y,
         map: player.position.map,
       });
       return;
@@ -93,8 +119,8 @@ class PlayerManager {
 
     socket.broadcast.emit('player:moved', {
       playerId: player.id,
-      x,
-      y,
+      x: player.position.x,
+      y: player.position.y,
       map: player.position.map,
     });
   }
@@ -226,7 +252,7 @@ class PlayerManager {
       return;
     }
 
-    const trimmed = (message || '').trim();
+    const trimmed = String(message || '').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LENGTH);
     if (!trimmed) {
       return;
     }
@@ -291,6 +317,7 @@ class PlayerManager {
     socket.leave(dungeonId);
     player.dungeonId = null;
     player.isDead = false;
+    player.position = { ...player.position, map: 'town', x: 0, y: 0 };
     socket.emit('dungeon:left', {});
     this.io.to(dungeonId).emit('dungeon:playerLeft', { playerId: player.id });
   }

@@ -265,7 +265,9 @@ class GameManager {
       result.rewards = this.generateRewards(monster);
       room.monsters = room.monsters.filter((entry) => entry.id !== monster.id);
 
-      if (room.monsters.length === 0) {
+      if (room.bossSpawned && monster.isBoss) {
+        this.handleDungeonClear(attacker.dungeonId, room, monster);
+      } else if (room.monsters.length === 0) {
         this.handleWaveClear(attacker.dungeonId, room);
       }
     }
@@ -315,6 +317,18 @@ class GameManager {
         this.spawnMonsters(dungeonId);
       }
     }, 5000);
+  }
+
+  handleDungeonClear(dungeonId, room, boss) {
+    this.clearSpawnTimer(dungeonId);
+    room.monsters = [];
+
+    this.io.to(dungeonId).emit('dungeon:cleared', {
+      dungeonId,
+      name: room.config.name,
+      bossName: boss.name,
+      wave: room.wave,
+    });
   }
 
   generateRewards(monster) {
