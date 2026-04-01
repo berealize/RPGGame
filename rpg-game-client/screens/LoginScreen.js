@@ -11,10 +11,10 @@ import {
 import { useGame } from '../context/GameContext';
 
 const CLASSES = [
-  { id: 'warrior', label: 'Warrior', icon: 'W', desc: 'High HP and defense.', color: '#e74c3c' },
-  { id: 'mage', label: 'Mage', icon: 'M', desc: 'High magic damage.', color: '#9b59b6' },
-  { id: 'archer', label: 'Archer', icon: 'A', desc: 'Fast multi-hit attacks.', color: '#27ae60' },
-  { id: 'paladin', label: 'Paladin', icon: 'P', desc: 'Balanced tank fighter.', color: '#f39c12' },
+  { id: 'warrior', label: '전사', icon: '전', desc: '높은 체력과 방어력을 가진 근접형입니다.', color: '#e74c3c' },
+  { id: 'mage', label: '마법사', icon: '마', desc: '강력한 마법 피해를 주는 원거리형입니다.', color: '#9b59b6' },
+  { id: 'archer', label: '궁수', icon: '궁', desc: '빠른 연속 공격에 특화된 클래스입니다.', color: '#27ae60' },
+  { id: 'paladin', label: '성기사', icon: '성', desc: '공수 균형이 좋은 탱커형 클래스입니다.', color: '#f39c12' },
 ];
 
 export default function LoginScreen({ navigation }) {
@@ -49,17 +49,17 @@ export default function LoginScreen({ navigation }) {
   };
 
   const statusLabel = {
-    connected: 'Server Connected',
-    connecting: 'Connecting...',
-    reconnecting: `Reconnecting${reconnectAttempts > 0 ? ` (${reconnectAttempts})` : '...'}`,
-    disconnected: 'Disconnected',
-  }[connectionState] || 'Connecting...';
+    connected: '서버 연결됨',
+    connecting: '연결 중...',
+    reconnecting: `재연결 중${reconnectAttempts > 0 ? ` (${reconnectAttempts})` : '...'}`,
+    disconnected: '연결 끊김',
+  }[connectionState] || '연결 중...';
 
   return (
     <View style={styles.container}>
       <View style={styles.titleBox}>
-        <Text style={styles.titleMain}>REALM OF LEGENDS</Text>
-        <Text style={styles.titleSub}>Multiplayer dungeon crawler</Text>
+        <Text style={styles.titleMain}>레전드의 영역</Text>
+        <Text style={styles.titleSub}>멀티플레이 던전 RPG</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
@@ -69,7 +69,7 @@ export default function LoginScreen({ navigation }) {
             onPress={() => setMode('login')}
           >
             <Text style={[styles.modeTabText, mode === 'login' && styles.modeTabTextActive]}>
-              Login
+              로그인
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -77,15 +77,15 @@ export default function LoginScreen({ navigation }) {
             onPress={() => setMode('create')}
           >
             <Text style={[styles.modeTabText, mode === 'create' && styles.modeTabTextActive]}>
-              Create Account
+              계정 생성
             </Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.label}>Account ID</Text>
+        <Text style={styles.label}>계정 ID</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter account ID"
+          placeholder="계정 ID를 입력하세요"
           placeholderTextColor="#5a4a6a"
           value={accountName}
           onChangeText={setAccountName}
@@ -94,10 +94,10 @@ export default function LoginScreen({ navigation }) {
           autoCorrect={false}
         />
 
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>비밀번호</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter password"
+          placeholder="비밀번호를 입력하세요"
           placeholderTextColor="#5a4a6a"
           value={password}
           onChangeText={setPassword}
@@ -108,10 +108,10 @@ export default function LoginScreen({ navigation }) {
 
         {mode === 'create' && (
           <>
-            <Text style={styles.label}>Character Name</Text>
+            <Text style={styles.label}>캐릭터 이름</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter character name"
+              placeholder="캐릭터 이름을 입력하세요"
               placeholderTextColor="#5a4a6a"
               value={name}
               onChangeText={setName}
@@ -119,7 +119,7 @@ export default function LoginScreen({ navigation }) {
               autoCapitalize="none"
             />
 
-            <Text style={styles.label}>Class</Text>
+            <Text style={styles.label}>직업</Text>
             <View style={styles.classGrid}>
               {CLASSES.map((cls) => (
                 <TouchableOpacity
@@ -153,7 +153,7 @@ export default function LoginScreen({ navigation }) {
             <ActivityIndicator color="#1a0a2e" />
           ) : (
             <Text style={styles.startBtnText}>
-              {mode === 'create' ? 'Create Account' : 'Login'}
+              {mode === 'create' ? '계정 생성' : '로그인'}
             </Text>
           )}
         </TouchableOpacity>

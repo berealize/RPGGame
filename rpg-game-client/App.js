@@ -26,9 +26,9 @@ export default function App() {
           }}
         >
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Town" component={TownScreen} options={{ title: 'Town' }} />
-          <Stack.Screen name="Dungeon" component={DungeonScreen} options={{ title: 'Dungeon' }} />
-          <Stack.Screen name="Character" component={CharacterScreen} options={{ title: 'Character' }} />
+          <Stack.Screen name="Town" component={TownScreen} options={{ title: '마을' }} />
+          <Stack.Screen name="Dungeon" component={DungeonScreen} options={{ title: '던전' }} />
+          <Stack.Screen name="Character" component={CharacterScreen} options={{ title: '캐릭터' }} />
         </Stack.Navigator>
       </NavigationContainer>
     </GameProvider>

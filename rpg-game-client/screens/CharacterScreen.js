@@ -12,22 +12,43 @@ import { useGame } from '../context/GameContext';
 const STAT_LABELS = {
   hp: 'HP',
   mp: 'MP',
-  atk: 'Attack',
-  def: 'Defense',
-  spd: 'Speed',
+  atk: '공격력',
+  def: '방어력',
+  spd: '속도',
 };
 
 const SLOT_LABELS = {
-  weapon: 'Weapon',
-  armor: 'Armor',
-  accessory: 'Accessory',
+  weapon: '무기',
+  armor: '방어구',
+  accessory: '장신구',
 };
 
 const CLASS_ICONS = {
-  warrior: 'W',
-  mage: 'M',
-  archer: 'A',
-  paladin: 'P',
+  warrior: '전',
+  mage: '마',
+  archer: '궁',
+  paladin: '성',
+};
+
+const CLASS_LABELS = {
+  warrior: '전사',
+  mage: '마법사',
+  archer: '궁수',
+  paladin: '성기사',
+};
+
+const TAB_LABELS = {
+  stats: '능력치',
+  equipment: '장비',
+  inventory: '인벤토리',
+  skills: '스킬',
+};
+
+const SKILL_TYPE_LABELS = {
+  physical: '물리',
+  magic: '마법',
+  holy: '신성',
+  buff: '버프',
 };
 
 export default function CharacterScreen({ navigation }) {
@@ -49,9 +70,9 @@ export default function CharacterScreen({ navigation }) {
       .map(([key, value]) => `${STAT_LABELS[key] || key}: +${value}`)
       .join('\n');
 
-    Alert.alert(item.name, bonuses || 'No bonus data.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Equip', onPress: () => equipItem(item.id) },
+    Alert.alert(item.name, bonuses || '추가 능력치 정보가 없습니다.', [
+      { text: '취소', style: 'cancel' },
+      { text: '장착', onPress: () => equipItem(item.id) },
     ]);
   };
 
@@ -62,9 +83,9 @@ export default function CharacterScreen({ navigation }) {
         <View>
           <Text style={styles.charName}>{player.name}</Text>
           <Text style={styles.charClass}>
-            {player.characterClass} Lv.{player.level}
+            {CLASS_LABELS[player.characterClass] || player.characterClass} Lv.{player.level}
           </Text>
-          <Text style={styles.charGold}>Gold {player.gold}</Text>
+          <Text style={styles.charGold}>골드 {player.gold}</Text>
         </View>
       </View>
 
@@ -76,7 +97,7 @@ export default function CharacterScreen({ navigation }) {
             onPress={() => setActiveTab(tab)}
           >
             <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {{ stats: 'Stats', equipment: 'Equipment', inventory: 'Inventory', skills: 'Skills' }[tab]}
+              {TAB_LABELS[tab]}
             </Text>
           </TouchableOpacity>
         ))}
@@ -85,7 +106,7 @@ export default function CharacterScreen({ navigation }) {
       <ScrollView style={styles.content}>
         {activeTab === 'stats' && (
           <View>
-            <Text style={styles.sectionTitle}>Base Stats</Text>
+            <Text style={styles.sectionTitle}>기본 능력치</Text>
             {Object.entries(player.stats).map(([key, value]) => (
               STAT_LABELS[key] ? (
                 <View key={key} style={styles.statRow}>
@@ -105,7 +126,7 @@ export default function CharacterScreen({ navigation }) {
 
             <View style={styles.divider} />
 
-            <Text style={styles.sectionTitle}>Experience</Text>
+            <Text style={styles.sectionTitle}>경험치</Text>
             <View style={styles.expRow}>
               <Text style={styles.expLabel}>EXP</Text>
               <View style={styles.expBarBg}>
@@ -125,7 +146,7 @@ export default function CharacterScreen({ navigation }) {
 
         {activeTab === 'equipment' && (
           <View>
-            <Text style={styles.sectionTitle}>Equipped Items</Text>
+            <Text style={styles.sectionTitle}>장착 중인 장비</Text>
             {Object.entries(SLOT_LABELS).map(([slot, label]) => {
               const item = player.equipment?.[slot];
               return (
@@ -141,7 +162,7 @@ export default function CharacterScreen({ navigation }) {
                       </Text>
                     </View>
                   ) : (
-                    <Text style={styles.equipEmpty}>Empty</Text>
+                    <Text style={styles.equipEmpty}>비어 있음</Text>
                   )}
                 </View>
               );
@@ -151,9 +172,9 @@ export default function CharacterScreen({ navigation }) {
 
         {activeTab === 'inventory' && (
           <View>
-            <Text style={styles.sectionTitle}>Inventory ({player.inventory?.length || 0})</Text>
+            <Text style={styles.sectionTitle}>인벤토리 ({player.inventory?.length || 0})</Text>
             {(player.inventory || []).length === 0 && (
-              <Text style={styles.emptyText}>Inventory is empty.</Text>
+              <Text style={styles.emptyText}>인벤토리가 비어 있습니다.</Text>
             )}
             {(player.inventory || []).map((item) => (
               <View key={item.id} style={styles.invItem}>
@@ -161,8 +182,8 @@ export default function CharacterScreen({ navigation }) {
                   <Text style={styles.invItemName}>{item.name}</Text>
                   <Text style={styles.invItemType}>
                     {item.type === 'equipment'
-                      ? `Equipment - ${SLOT_LABELS[item.slot] || item.slot}`
-                      : 'Consumable'}
+                      ? `장비 - ${SLOT_LABELS[item.slot] || item.slot}`
+                      : '소모품'}
                   </Text>
                   {item.statBonus && (
                     <Text style={styles.invItemBonus}>
@@ -174,7 +195,7 @@ export default function CharacterScreen({ navigation }) {
                 </View>
                 {item.type === 'equipment' && (
                   <TouchableOpacity style={styles.equipBtn} onPress={() => handleEquip(item)}>
-                    <Text style={styles.equipBtnText}>Equip</Text>
+                    <Text style={styles.equipBtnText}>장착</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -184,16 +205,16 @@ export default function CharacterScreen({ navigation }) {
 
         {activeTab === 'skills' && (
           <View>
-            <Text style={styles.sectionTitle}>Skills</Text>
+            <Text style={styles.sectionTitle}>스킬</Text>
             {(player.skills || []).map((skill) => (
               <View key={skill.id} style={styles.skillCard}>
                 <Text style={styles.skillName}>{skill.name}</Text>
                 <View style={styles.skillMeta}>
                   <Text style={styles.skillTag}>MP {skill.mpCost}</Text>
                   <Text style={styles.skillTag}>x{skill.multiplier}</Text>
-                  <Text style={styles.skillTag}>CD {(skill.cooldownMs || 0) / 1000}s</Text>
-                  {skill.hits ? <Text style={styles.skillTag}>Hits {skill.hits}</Text> : null}
-                  <Text style={styles.skillTag}>{skill.type}</Text>
+                  <Text style={styles.skillTag}>쿨 {(skill.cooldownMs || 0) / 1000}초</Text>
+                  {skill.hits ? <Text style={styles.skillTag}>타수 {skill.hits}</Text> : null}
+                  <Text style={styles.skillTag}>{SKILL_TYPE_LABELS[skill.type] || skill.type}</Text>
                 </View>
               </View>
             ))}

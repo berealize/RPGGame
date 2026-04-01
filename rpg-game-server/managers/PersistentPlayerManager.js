@@ -100,7 +100,7 @@ class PersistentPlayerManager {
         await handler.call(this, socket, payload || {});
       } catch (error) {
         console.error(`[PersistentPlayerManager:${handler.name}]`, error);
-        socket.emit('error', { msg: 'A server error occurred.' });
+        socket.emit('error', { msg: '서버 오류가 발생했습니다.' });
       }
     };
   }
@@ -112,20 +112,20 @@ class PersistentPlayerManager {
   getDefaultSkills(characterClass) {
     const skills = {
       warrior: [
-        { id: 'slash', name: 'Slash', mpCost: 10, multiplier: 1.5, cooldownMs: 2500, type: 'physical' },
-        { id: 'shield_bash', name: 'Shield Bash', mpCost: 15, multiplier: 1.2, cooldownMs: 5000, type: 'physical', stun: true },
+        { id: 'slash', name: '베기', mpCost: 10, multiplier: 1.5, cooldownMs: 2500, type: 'physical' },
+        { id: 'shield_bash', name: '방패 강타', mpCost: 15, multiplier: 1.2, cooldownMs: 5000, type: 'physical', stun: true },
       ],
       mage: [
-        { id: 'fireball', name: 'Fireball', mpCost: 20, multiplier: 2, cooldownMs: 3000, type: 'magic' },
-        { id: 'ice_lance', name: 'Ice Lance', mpCost: 25, multiplier: 1.8, cooldownMs: 4500, type: 'magic', slow: true },
+        { id: 'fireball', name: '파이어볼', mpCost: 20, multiplier: 2, cooldownMs: 3000, type: 'magic' },
+        { id: 'ice_lance', name: '아이스 랜스', mpCost: 25, multiplier: 1.8, cooldownMs: 4500, type: 'magic', slow: true },
       ],
       archer: [
-        { id: 'piercing_shot', name: 'Piercing Shot', mpCost: 15, multiplier: 1.7, cooldownMs: 3000, type: 'physical' },
-        { id: 'multi_shot', name: 'Multi Shot', mpCost: 20, multiplier: 1.2, cooldownMs: 5000, hits: 3, type: 'physical' },
+        { id: 'piercing_shot', name: '관통 사격', mpCost: 15, multiplier: 1.7, cooldownMs: 3000, type: 'physical' },
+        { id: 'multi_shot', name: '멀티 샷', mpCost: 20, multiplier: 1.2, cooldownMs: 5000, hits: 3, type: 'physical' },
       ],
       paladin: [
-        { id: 'holy_strike', name: 'Holy Strike', mpCost: 15, multiplier: 1.6, cooldownMs: 3000, type: 'holy' },
-        { id: 'divine_shield', name: 'Divine Shield', mpCost: 30, multiplier: 0, cooldownMs: 8000, type: 'buff', buffType: 'shield' },
+        { id: 'holy_strike', name: '홀리 스트라이크', mpCost: 15, multiplier: 1.6, cooldownMs: 3000, type: 'holy' },
+        { id: 'divine_shield', name: '디바인 실드', mpCost: 30, multiplier: 0, cooldownMs: 8000, type: 'buff', buffType: 'shield' },
       ],
     };
 
@@ -365,18 +365,18 @@ class PersistentPlayerManager {
   async onRegister(socket, { accountName, password, name, characterClass }) {
     const safeAccountName = sanitizeAccountName(accountName);
     if (safeAccountName.length < ACCOUNT_MIN_LENGTH) {
-      socket.emit('error', { msg: `Account ID must be ${ACCOUNT_MIN_LENGTH}-${ACCOUNT_MAX_LENGTH} characters.` });
+      socket.emit('error', { msg: `계정 ID는 ${ACCOUNT_MIN_LENGTH}자 이상 ${ACCOUNT_MAX_LENGTH}자 이하로 입력해야 합니다.` });
       return;
     }
 
     if (String(password || '').length < PASSWORD_MIN_LENGTH) {
-      socket.emit('error', { msg: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.` });
+      socket.emit('error', { msg: `비밀번호는 최소 ${PASSWORD_MIN_LENGTH}자 이상이어야 합니다.` });
       return;
     }
 
     const existing = await prisma.account.findUnique({ where: { accountName: safeAccountName } });
     if (existing) {
-      socket.emit('error', { msg: 'That account ID is already in use.' });
+      socket.emit('error', { msg: '이미 사용 중인 계정 ID입니다.' });
       return;
     }
 
@@ -413,7 +413,7 @@ class PersistentPlayerManager {
     const loaded = await this.loadAccountPlayer(safeAccountName);
 
     if (!loaded || !verifyPassword(String(password || ''), loaded.account.passwordHash)) {
-      socket.emit('error', { msg: 'Invalid account ID or password.' });
+      socket.emit('error', { msg: '계정 ID 또는 비밀번호가 올바르지 않습니다.' });
       return;
     }
 
@@ -449,19 +449,19 @@ class PersistentPlayerManager {
 
       const rawSession = await this.redis.get(`${SESSION_PREFIX}${payload.sub}`);
       if (!rawSession) {
-        socket.emit('auth:sessionExpired', { msg: 'Session expired. Please log in again.' });
+        socket.emit('auth:sessionExpired', { msg: '세션이 만료되었습니다. 다시 로그인해 주세요.' });
         return;
       }
 
       const session = JSON.parse(rawSession);
       if (session.sessionId !== payload.sid) {
-        socket.emit('auth:sessionExpired', { msg: 'Session expired. Please log in again.' });
+        socket.emit('auth:sessionExpired', { msg: '세션이 만료되었습니다. 다시 로그인해 주세요.' });
         return;
       }
 
       const loaded = await this.loadAccountPlayer(session.accountName);
       if (!loaded) {
-        socket.emit('auth:sessionExpired', { msg: 'Session expired. Please log in again.' });
+        socket.emit('auth:sessionExpired', { msg: '세션이 만료되었습니다. 다시 로그인해 주세요.' });
         return;
       }
 
@@ -479,7 +479,7 @@ class PersistentPlayerManager {
       this.attachPlayerToSocket(socket, player);
       await this.issueSession(socket, player, { created: false, restored: true });
     } catch (error) {
-      socket.emit('auth:sessionExpired', { msg: 'Session expired. Please log in again.' });
+      socket.emit('auth:sessionExpired', { msg: '세션이 만료되었습니다. 다시 로그인해 주세요.' });
     }
   }
 
@@ -521,18 +521,18 @@ class PersistentPlayerManager {
     }
 
     if (!player.dungeonId) {
-      socket.emit('error', { msg: 'You can only attack inside a dungeon.' });
+      socket.emit('error', { msg: '던전 안에서만 공격할 수 있습니다.' });
       return;
     }
 
     if (player.isDead) {
-      socket.emit('error', { msg: 'You cannot attack while defeated.' });
+      socket.emit('error', { msg: '쓰러진 상태에서는 공격할 수 없습니다.' });
       return;
     }
 
     const result = this.gameManager.processAttack(player, targetId, 'basic');
     if (!result) {
-      socket.emit('error', { msg: 'The attack target is invalid.' });
+      socket.emit('error', { msg: '공격 대상이 올바르지 않습니다.' });
       return;
     }
 
@@ -553,30 +553,30 @@ class PersistentPlayerManager {
     }
 
     if (!player.dungeonId) {
-      socket.emit('error', { msg: 'You can only use skills inside a dungeon.' });
+      socket.emit('error', { msg: '던전 안에서만 스킬을 사용할 수 있습니다.' });
       return;
     }
 
     if (player.isDead) {
-      socket.emit('error', { msg: 'You cannot use skills while defeated.' });
+      socket.emit('error', { msg: '쓰러진 상태에서는 스킬을 사용할 수 없습니다.' });
       return;
     }
 
     const skill = player.skills.find((entry) => entry.id === skillId);
     if (!skill) {
-      socket.emit('error', { msg: 'Skill not found.' });
+      socket.emit('error', { msg: '해당 스킬을 찾을 수 없습니다.' });
       return;
     }
 
     const now = Date.now();
     const nextAvailableAt = player.skillCooldowns?.[skillId] || 0;
     if (nextAvailableAt > now) {
-      socket.emit('error', { msg: `${skill.name} is on cooldown for ${Math.ceil((nextAvailableAt - now) / 1000)}s.` });
+      socket.emit('error', { msg: `${skill.name} 쿨타임이 ${Math.ceil((nextAvailableAt - now) / 1000)}초 남았습니다.` });
       return;
     }
 
     if (player.currentMp < skill.mpCost) {
-      socket.emit('error', { msg: 'Not enough MP.' });
+      socket.emit('error', { msg: 'MP가 부족합니다.' });
       return;
     }
 
@@ -593,7 +593,7 @@ class PersistentPlayerManager {
         ...player.skillCooldowns,
         [skillId]: nextAvailableAt,
       };
-      socket.emit('error', { msg: 'The skill target is invalid.' });
+      socket.emit('error', { msg: '스킬 대상이 올바르지 않습니다.' });
       return;
     }
 
@@ -624,12 +624,12 @@ class PersistentPlayerManager {
 
     const item = player.inventory.find((entry) => entry.id === itemId);
     if (!item) {
-      socket.emit('error', { msg: 'Item not found.' });
+      socket.emit('error', { msg: '아이템을 찾을 수 없습니다.' });
       return;
     }
 
     if (item.type !== 'equipment' || !item.slot) {
-      socket.emit('error', { msg: 'That item cannot be equipped.' });
+      socket.emit('error', { msg: '해당 아이템은 장착할 수 없습니다.' });
       return;
     }
 
@@ -678,18 +678,18 @@ class PersistentPlayerManager {
     }
 
     if (player.dungeonId) {
-      socket.emit('error', { msg: 'Leave your current dungeon first.' });
+      socket.emit('error', { msg: '현재 진행 중인 던전에서 먼저 나가야 합니다.' });
       return;
     }
 
     const joinResult = this.gameManager.joinRoom(dungeonId, player, socket);
     if (!joinResult?.ok) {
       const messages = {
-        NOT_FOUND: 'Dungeon not found.',
-        LEVEL_TOO_LOW: `You need to be at least level ${joinResult?.minLevel}.`,
-        ROOM_FULL: 'The dungeon room is full.',
+        NOT_FOUND: '던전을 찾을 수 없습니다.',
+        LEVEL_TOO_LOW: `최소 레벨 ${joinResult?.minLevel}부터 입장할 수 있습니다.`,
+        ROOM_FULL: '던전 방이 가득 찼습니다.',
       };
-      socket.emit('error', { msg: messages[joinResult?.code] || 'Failed to enter dungeon.' });
+      socket.emit('error', { msg: messages[joinResult?.code] || '던전 입장에 실패했습니다.' });
       return;
     }
 

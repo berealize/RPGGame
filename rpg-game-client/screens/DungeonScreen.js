@@ -94,10 +94,10 @@ export default function DungeonScreen({ navigation }) {
   }, [attack, battleMode, dungeonState, player, selectedTarget, useSkill]);
 
   const handleLeave = () => {
-    Alert.alert('Leave Dungeon', 'Do you want to leave this dungeon?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('던전 나가기', '현재 던전에서 나가시겠습니까?', [
+      { text: '취소', style: 'cancel' },
       {
-        text: 'Leave',
+        text: '나가기',
         style: 'destructive',
         onPress: () => {
           setBattleMode('manual');
@@ -110,7 +110,7 @@ export default function DungeonScreen({ navigation }) {
 
   const handleAttack = () => {
     if (!selectedTarget) {
-      Alert.alert('Select Target', 'Choose a monster before attacking.');
+      Alert.alert('대상 선택', '공격할 몬스터를 먼저 선택하세요.');
       return;
     }
 
@@ -119,18 +119,18 @@ export default function DungeonScreen({ navigation }) {
 
   const handleSkill = (skill) => {
     if (!selectedTarget) {
-      Alert.alert('Select Target', 'Choose a monster before using a skill.');
+      Alert.alert('대상 선택', '스킬을 사용할 몬스터를 먼저 선택하세요.');
       return;
     }
 
     if (player.currentMp < skill.mpCost) {
-      Alert.alert('Not Enough MP', `${skill.name} needs ${skill.mpCost} MP.`);
+      Alert.alert('MP 부족', `${skill.name} 사용에는 MP ${skill.mpCost}가 필요합니다.`);
       return;
     }
 
     const cooldownLeft = Math.max(0, (player.skillCooldowns?.[skill.id] || 0) - Date.now());
     if (cooldownLeft > 0) {
-      Alert.alert('Skill Cooling Down', `${skill.name} is available in ${Math.ceil(cooldownLeft / 1000)}s.`);
+      Alert.alert('쿨타임 진행 중', `${skill.name}은 ${Math.ceil(cooldownLeft / 1000)}초 후에 사용할 수 있습니다.`);
       return;
     }
 
@@ -158,9 +158,9 @@ export default function DungeonScreen({ navigation }) {
   if (!dungeonState) {
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyTitle}>No active dungeon</Text>
+        <Text style={styles.emptyTitle}>진행 중인 던전이 없습니다</Text>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtnText}>Back to Town</Text>
+          <Text style={styles.backBtnText}>마을로 돌아가기</Text>
         </TouchableOpacity>
       </View>
     );
@@ -199,7 +199,7 @@ export default function DungeonScreen({ navigation }) {
             {player.name} Lv.{player.level}
           </Text>
           <TouchableOpacity style={styles.leaveBtn} onPress={handleLeave}>
-            <Text style={styles.leaveBtnText}>Leave</Text>
+            <Text style={styles.leaveBtnText}>나가기</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.barRow}>
@@ -220,17 +220,17 @@ export default function DungeonScreen({ navigation }) {
 
       <View style={styles.dungeonInfo}>
         <Text style={styles.dungeonName}>
-          {dungeonState.name} - Wave {dungeonState.wave}
+          {dungeonState.name} - {dungeonState.wave} 웨이브
         </Text>
         {selectedMonster && (
           <Text style={styles.selectedTarget}>
-            Target: {selectedMonster.name} ({selectedMonster.hp}/{selectedMonster.maxHp})
+            대상: {selectedMonster.name} ({selectedMonster.hp}/{selectedMonster.maxHp})
           </Text>
         )}
       </View>
 
       <View style={styles.monstersSection}>
-        <Text style={styles.sectionTitle}>Monsters</Text>
+        <Text style={styles.sectionTitle}>몬스터</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monsterScroll}>
           {(dungeonState?.monsters || []).map((monster) => {
             const monsterHpPercent = Math.max(0, (monster.hp / monster.maxHp) * 100);
@@ -247,7 +247,7 @@ export default function DungeonScreen({ navigation }) {
                 ]}
                 onPress={() => setSelectedTarget(monster.id)}
               >
-                <Text style={styles.monsterEmoji}>{isBoss ? 'B' : 'M'}</Text>
+                <Text style={styles.monsterEmoji}>{isBoss ? '보' : '몹'}</Text>
                 <Text style={styles.monsterName}>{monster.name}</Text>
                 <View style={styles.monsterHpBg}>
                   <View style={[styles.monsterHpFill, { width: `${monsterHpPercent}%` }]} />
@@ -259,7 +259,7 @@ export default function DungeonScreen({ navigation }) {
             );
           })}
           {(!dungeonState?.monsters || dungeonState.monsters.length === 0) && (
-            <Text style={styles.noMonsters}>No monsters are active right now.</Text>
+            <Text style={styles.noMonsters}>현재 등장한 몬스터가 없습니다.</Text>
           )}
         </ScrollView>
       </View>
@@ -271,7 +271,7 @@ export default function DungeonScreen({ navigation }) {
           </Text>
         ))}
         {combatLog.length === 0 && (
-          <Text style={styles.logEmpty}>Combat log is empty.</Text>
+          <Text style={styles.logEmpty}>전투 기록이 없습니다.</Text>
         )}
       </ScrollView>
 
@@ -282,7 +282,7 @@ export default function DungeonScreen({ navigation }) {
             onPress={() => setBattleMode('manual')}
           >
             <Text style={[styles.modeBtnText, battleMode === 'manual' && styles.modeBtnTextActive]}>
-              Manual
+              수동
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -290,17 +290,17 @@ export default function DungeonScreen({ navigation }) {
             onPress={() => setBattleMode('auto')}
           >
             <Text style={[styles.modeBtnText, battleMode === 'auto' && styles.modeBtnTextActive]}>
-              Auto
+              자동
             </Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.autoHint}>
           {battleMode === 'auto'
-            ? `Auto battle: ${autoSkill ? `${autoSkill.name} priority` : 'basic attack fallback'}`
-            : 'Manual battle: choose attacks yourself'}
+            ? `자동 전투: ${autoSkill ? `${autoSkill.name} 우선 사용` : '기본 공격 사용'}`
+            : '수동 전투: 직접 공격 방식을 선택하세요'}
         </Text>
         <TouchableOpacity style={styles.attackBtn} onPress={handleAttack} disabled={player.isDead}>
-          <Text style={styles.attackBtnText}>Basic Attack</Text>
+          <Text style={styles.attackBtnText}>기본 공격</Text>
         </TouchableOpacity>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.skillRow}>
           {(player.skills || []).map((skill) => (
@@ -321,7 +321,7 @@ export default function DungeonScreen({ navigation }) {
                   <Text style={styles.skillName}>{skill.name}</Text>
                   <Text style={styles.skillMp}>MP {skill.mpCost}</Text>
                   <Text style={styles.skillCooldown}>
-                    {isOnCooldown ? `CD ${Math.ceil(cooldownLeft / 1000)}s` : `CD ${(skill.cooldownMs || 0) / 1000}s`}
+                    {isOnCooldown ? `쿨 ${Math.ceil(cooldownLeft / 1000)}초` : `쿨 ${(skill.cooldownMs || 0) / 1000}초`}
                   </Text>
                 </TouchableOpacity>
               );
@@ -331,7 +331,7 @@ export default function DungeonScreen({ navigation }) {
       </View>
 
       <TouchableOpacity style={styles.chatFab} onPress={openChat}>
-        <Text style={styles.chatFabIcon}>Chat</Text>
+        <Text style={styles.chatFabIcon}>채팅</Text>
         {unreadChatCount > 0 && (
           <View style={styles.chatBadge}>
             <Text style={styles.chatBadgeText}>{unreadChatCount > 9 ? '9+' : unreadChatCount}</Text>
@@ -343,15 +343,15 @@ export default function DungeonScreen({ navigation }) {
         <View style={styles.chatModalOverlay}>
           <View style={styles.chatModal}>
             <View style={styles.chatModalHeader}>
-              <Text style={styles.chatModalTitle}>Party Chat</Text>
+              <Text style={styles.chatModalTitle}>파티 채팅</Text>
               <TouchableOpacity onPress={() => setChatOpen(false)}>
-                <Text style={styles.chatModalClose}>Close</Text>
+                <Text style={styles.chatModalClose}>닫기</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.chatModalMessages} contentContainerStyle={styles.chatModalMessagesContent}>
               {chatMessages.length === 0 && (
-                <Text style={styles.chatEmpty}>No messages yet.</Text>
+                <Text style={styles.chatEmpty}>아직 채팅이 없습니다.</Text>
               )}
               {chatMessages.map((message, index) => (
                 <View key={`${message.ts}-${index}`} style={styles.chatBubble}>
@@ -366,13 +366,13 @@ export default function DungeonScreen({ navigation }) {
                 style={styles.chatInput}
                 value={chatInput}
                 onChangeText={setChatInput}
-                placeholder="Type a message"
+                placeholder="메시지를 입력하세요"
                 placeholderTextColor="#5a4a6a"
                 onSubmitEditing={handleSendChat}
                 returnKeyType="send"
               />
               <TouchableOpacity style={styles.sendBtn} onPress={handleSendChat}>
-                <Text style={styles.sendBtnText}>Send</Text>
+                <Text style={styles.sendBtnText}>전송</Text>
               </TouchableOpacity>
             </View>
           </View>

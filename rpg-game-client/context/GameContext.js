@@ -101,7 +101,7 @@ export function GameProvider({ children }) {
       setReconnectAttempts(0);
 
       if (sessionLoadedRef.current && !sessionRef.current?.refreshToken) {
-        addNotification('Connected to server.', 'success');
+        addNotification('서버에 연결되었습니다.', 'success');
       }
     });
 
@@ -110,7 +110,7 @@ export function GameProvider({ children }) {
       setConnectionState(reason === 'io client disconnect' ? 'disconnected' : 'reconnecting');
       setAuthLoading(false);
       if (reason !== 'io client disconnect') {
-        addNotification('Connection lost. Reconnecting...', 'error');
+        addNotification('연결이 끊어졌습니다. 다시 연결 중입니다.', 'error');
       }
     });
 
@@ -121,9 +121,9 @@ export function GameProvider({ children }) {
 
     socket.on('error', ({ msg }) => {
       setAuthLoading(false);
-      addNotification(msg || 'An unknown error occurred.', 'error');
+      addNotification(msg || '알 수 없는 오류가 발생했습니다.', 'error');
 
-      if ((msg || '') === 'Invalid account ID or password.') {
+      if ((msg || '') === '계정 ID 또는 비밀번호가 올바르지 않습니다.') {
         setPlayer(null);
         setDungeonState(null);
       }
@@ -140,12 +140,12 @@ export function GameProvider({ children }) {
         setChatMessages([]);
         setNotifications([]);
         setDungeonState(null);
-        addNotification(`Welcome, ${safeData.name}.`, 'success');
+        addNotification(`${safeData.name}님, 환영합니다.`, 'success');
       } else {
         if (!safeData.dungeonId) {
           setDungeonState(null);
         }
-        addNotification(`Session restored for ${safeData.name}.`, 'success');
+        addNotification(`${safeData.name}님의 세션이 복구되었습니다.`, 'success');
       }
     });
 
@@ -155,13 +155,13 @@ export function GameProvider({ children }) {
       setDungeonState(null);
       setCombatLog([]);
       persistSession(null);
-      addNotification(msg || 'Session expired. Please log in again.', 'error');
+      addNotification(msg || '세션이 만료되었습니다. 다시 로그인해 주세요.', 'error');
     });
 
     socket.on('player:levelUp', ({ level, stats, player: updatedPlayer }) => {
       setPlayer((prev) => (updatedPlayer ? updatedPlayer : prev ? { ...prev, level, stats } : prev));
-      addNotification(`Level up! You reached level ${level}.`, 'levelup');
-      addLog(`You are now level ${level}.`, 'levelup');
+      addNotification(`레벨 업! 레벨 ${level}에 도달했습니다.`, 'levelup');
+      addLog(`레벨 ${level}에 도달했습니다.`, 'levelup');
     });
 
     socket.on('player:rewardsGained', ({ exp, gold, item, player: updatedPlayer }) => {
@@ -169,9 +169,9 @@ export function GameProvider({ children }) {
         setPlayer(updatedPlayer);
       }
 
-      const parts = [`Rewards: EXP +${exp}`, `Gold +${gold}`];
+      const parts = [`보상: 경험치 +${exp}`, `골드 +${gold}`];
       if (item) {
-        parts.push(`Item: ${item.name}`);
+        parts.push(`아이템: ${item.name}`);
       }
       addLog(parts.join(', '), 'reward');
     });
@@ -184,20 +184,20 @@ export function GameProvider({ children }) {
       setPlayer((prev) => (
         updatedPlayer ? updatedPlayer : prev ? { ...prev, equipment, stats, inventory } : prev
       ));
-      addNotification('Equipment updated.', 'success');
+      addNotification('장비가 변경되었습니다.', 'success');
     });
 
     socket.on('player:died', ({ message }) => {
       setPlayer((prev) => (prev ? { ...prev, currentHp: 0, isDead: true } : prev));
-      addNotification(message || 'You were defeated.', 'error');
-      addLog('You are down. Revival in 5 seconds.', 'danger');
+      addNotification(message || '전투에서 패배했습니다.', 'error');
+      addLog('쓰러졌습니다. 5초 후 부활합니다.', 'danger');
     });
 
     socket.on('player:revived', ({ currentHp, player: updatedPlayer }) => {
       setPlayer((prev) => (
         updatedPlayer ? updatedPlayer : prev ? { ...prev, currentHp, isDead: false } : prev
       ));
-      addNotification('You have been revived.', 'success');
+      addNotification('부활했습니다.', 'success');
     });
 
     socket.on('combat:attackResult', (data) => {
@@ -205,12 +205,12 @@ export function GameProvider({ children }) {
       const isMe = playerRef.current?.id === attackerId;
 
       addLog(
-        `${isMe ? 'You' : 'Party'} hit ${targetName} for ${damage} damage (${targetCurrentHp}/${targetMaxHp}).`,
+        `${isMe ? '내가' : '파티가'} ${targetName}에게 ${damage} 피해를 입혔습니다. (${targetCurrentHp}/${targetMaxHp})`,
         isMe ? 'attack' : 'party'
       );
 
       if (targetDied) {
-        addLog(`${targetName} was defeated.`, 'kill');
+        addLog(`${targetName} 처치 완료.`, 'kill');
       }
 
       setDungeonState((prev) => {
@@ -230,7 +230,7 @@ export function GameProvider({ children }) {
       const isMe = playerRef.current?.id === data.caster;
 
       addLog(
-        `${isMe ? 'You' : 'Party'} used ${data.skillId} on ${data.targetName} for ${data.damage} damage.`,
+        `${isMe ? '내가' : '파티가'} ${data.targetName}에게 ${data.skillId}로 ${data.damage} 피해를 입혔습니다.`,
         'skill'
       );
 
@@ -255,7 +255,7 @@ export function GameProvider({ children }) {
       }
 
       addLog(
-        `${monsterName} attacked ${isMe ? 'you' : targetName} for ${damage} damage.`,
+        `${monsterName}이 ${isMe ? '당신' : targetName}에게 ${damage} 피해를 입혔습니다.`,
         isMe ? 'danger' : 'info'
       );
     });
@@ -263,44 +263,44 @@ export function GameProvider({ children }) {
     socket.on('dungeon:entered', ({ dungeonId, room }) => {
       setDungeonState({ dungeonId, ...room });
       setPlayer((prev) => (prev ? { ...prev, dungeonId } : prev));
-      addLog(`Entered ${room.name}.`, 'info');
+      addLog(`${room.name}에 입장했습니다.`, 'info');
     });
 
     socket.on('dungeon:left', () => {
       setDungeonState(null);
       setPlayer((prev) => (prev ? { ...prev, dungeonId: null, isDead: false } : prev));
-      addLog('You left the dungeon.', 'info');
+      addLog('던전에서 나왔습니다.', 'info');
     });
 
     socket.on('dungeon:monstersSpawned', ({ monsters, wave }) => {
       setDungeonState((prev) => (prev ? { ...prev, monsters, wave } : prev));
-      addLog(`Wave ${wave} started. ${monsters.length} monsters appeared.`, 'wave');
+      addLog(`${wave} 웨이브 시작. 몬스터 ${monsters.length}마리가 등장했습니다.`, 'wave');
     });
 
     socket.on('dungeon:waveClear', ({ wave, nextWave }) => {
-      addLog(`Wave ${wave} cleared. Next wave: ${nextWave}.`, 'success');
-      addNotification(`Wave ${wave} cleared.`, 'success');
+      addLog(`${wave} 웨이브를 클리어했습니다. 다음 웨이브: ${nextWave}.`, 'success');
+      addNotification(`${wave} 웨이브 클리어.`, 'success');
     });
 
     socket.on('dungeon:bossSpawned', ({ boss }) => {
-      addLog(`Boss spawned: ${boss.name}.`, 'boss');
-      addNotification(`Boss ${boss.name} appeared.`, 'boss');
+      addLog(`보스 등장: ${boss.name}.`, 'boss');
+      addNotification(`보스 ${boss.name}이(가) 등장했습니다.`, 'boss');
       setDungeonState((prev) => (prev ? { ...prev, monsters: [{ ...boss, maxHp: boss.hp, isBoss: true }] } : prev));
     });
 
     socket.on('dungeon:cleared', ({ name, bossName }) => {
       setDungeonState((prev) => (prev ? { ...prev, monsters: [] } : prev));
-      addLog(`${name} cleared. ${bossName} was defeated.`, 'success');
-      addNotification(`${name} clear complete.`, 'success');
+      addLog(`${name}을(를) 클리어했습니다. ${bossName} 처치 완료.`, 'success');
+      addNotification(`${name} 클리어 완료.`, 'success');
     });
 
     socket.on('dungeon:playerJoined', ({ name }) => {
-      addLog(`${name} joined the party.`, 'party');
+      addLog(`${name}님이 파티에 합류했습니다.`, 'party');
     });
 
     socket.on('dungeon:playerLeft', ({ playerId }) => {
       if (playerRef.current?.id !== playerId) {
-        addLog('A party member left the dungeon.', 'info');
+        addLog('파티원이 던전을 떠났습니다.', 'info');
       }
     });
 
@@ -315,7 +315,7 @@ export function GameProvider({ children }) {
 
     manager.on('reconnect_failed', () => {
       setConnectionState('disconnected');
-      addNotification('Unable to reconnect to the server.', 'error');
+      addNotification('서버에 다시 연결하지 못했습니다.', 'error');
     });
 
     manager.on('reconnect_error', () => {

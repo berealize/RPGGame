@@ -1,27 +1,27 @@
 const { v4: uuidv4 } = require('uuid');
 
 const MONSTERS = {
-  slime: { name: 'Slime', hp: 50, atk: 8, def: 2, exp: 15, gold: 5, lootTable: ['hp_potion'] },
-  goblin: { name: 'Goblin', hp: 80, atk: 15, def: 5, exp: 25, gold: 10, lootTable: ['iron_sword', 'hp_potion'] },
-  orc: { name: 'Orc', hp: 200, atk: 30, def: 15, exp: 60, gold: 25, lootTable: ['steel_armor', 'mp_potion'] },
-  skeleton: { name: 'Skeleton', hp: 120, atk: 20, def: 10, exp: 40, gold: 18, lootTable: ['bone_shield'] },
-  dragon: { name: 'Dragon', hp: 1000, atk: 80, def: 40, exp: 500, gold: 200, lootTable: ['dragon_scale', 'legendary_sword'] },
+  slime: { name: '슬라임', hp: 50, atk: 8, def: 2, exp: 15, gold: 5, lootTable: ['hp_potion'] },
+  goblin: { name: '고블린', hp: 80, atk: 15, def: 5, exp: 25, gold: 10, lootTable: ['iron_sword', 'hp_potion'] },
+  orc: { name: '오크', hp: 200, atk: 30, def: 15, exp: 60, gold: 25, lootTable: ['steel_armor', 'mp_potion'] },
+  skeleton: { name: '스켈레톤', hp: 120, atk: 20, def: 10, exp: 40, gold: 18, lootTable: ['bone_shield'] },
+  dragon: { name: '드래곤', hp: 1000, atk: 80, def: 40, exp: 500, gold: 200, lootTable: ['dragon_scale', 'legendary_sword'] },
 };
 
 const ITEMS = {
-  hp_potion: { id: 'hp_potion', name: 'HP Potion', type: 'consumable', effect: { hp: 50 } },
-  mp_potion: { id: 'mp_potion', name: 'MP Potion', type: 'consumable', effect: { mp: 30 } },
-  iron_sword: { id: 'iron_sword', name: 'Iron Sword', type: 'equipment', slot: 'weapon', statBonus: { atk: 10 } },
-  steel_armor: { id: 'steel_armor', name: 'Steel Armor', type: 'equipment', slot: 'armor', statBonus: { def: 15 } },
-  bone_shield: { id: 'bone_shield', name: 'Bone Shield', type: 'equipment', slot: 'accessory', statBonus: { def: 8 } },
-  dragon_scale: { id: 'dragon_scale', name: 'Dragon Scale', type: 'equipment', slot: 'armor', statBonus: { def: 50, hp: 100 } },
-  legendary_sword: { id: 'legendary_sword', name: 'Legendary Sword', type: 'equipment', slot: 'weapon', statBonus: { atk: 80 } },
+  hp_potion: { id: 'hp_potion', name: '체력 물약', type: 'consumable', effect: { hp: 50 } },
+  mp_potion: { id: 'mp_potion', name: '마나 물약', type: 'consumable', effect: { mp: 30 } },
+  iron_sword: { id: 'iron_sword', name: '철검', type: 'equipment', slot: 'weapon', statBonus: { atk: 10 } },
+  steel_armor: { id: 'steel_armor', name: '강철 갑옷', type: 'equipment', slot: 'armor', statBonus: { def: 15 } },
+  bone_shield: { id: 'bone_shield', name: '뼈 방패', type: 'equipment', slot: 'accessory', statBonus: { def: 8 } },
+  dragon_scale: { id: 'dragon_scale', name: '드래곤 비늘갑옷', type: 'equipment', slot: 'armor', statBonus: { def: 50, hp: 100 } },
+  legendary_sword: { id: 'legendary_sword', name: '전설의 검', type: 'equipment', slot: 'weapon', statBonus: { atk: 80 } },
 };
 
 const DUNGEONS = {
-  beginner_cave: { name: 'Beginner Cave', minLevel: 1, maxPlayers: 4, monsters: ['slime', 'goblin'], bossMonster: 'orc' },
-  cursed_forest: { name: 'Cursed Forest', minLevel: 5, maxPlayers: 4, monsters: ['goblin', 'skeleton'], bossMonster: 'dragon' },
-  dragon_lair: { name: 'Dragon Lair', minLevel: 20, maxPlayers: 6, monsters: ['orc', 'skeleton'], bossMonster: 'dragon' },
+  beginner_cave: { name: '초심자 동굴', minLevel: 1, maxPlayers: 4, monsters: ['slime', 'goblin'], bossMonster: 'orc' },
+  cursed_forest: { name: '저주받은 숲', minLevel: 5, maxPlayers: 4, monsters: ['goblin', 'skeleton'], bossMonster: 'dragon' },
+  dragon_lair: { name: '용의 둥지', minLevel: 20, maxPlayers: 6, monsters: ['orc', 'skeleton'], bossMonster: 'dragon' },
 };
 
 class GameManager {
@@ -196,7 +196,7 @@ class GameManager {
           target.isDead = true;
           target.currentHp = 0;
           this.io.to(target.socketId).emit('player:died', {
-            message: 'You were defeated in battle.',
+            message: '전투에서 패배했습니다.',
           });
 
           this.clearReviveTimer(target.socketId);

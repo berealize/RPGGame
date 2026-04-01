@@ -13,10 +13,17 @@ import {
 import { useGame } from '../context/GameContext';
 
 const DUNGEONS = [
-  { id: 'beginner_cave', name: 'Beginner Cave', icon: 'C', minLevel: 1, difficulty: 'Easy', color: '#2ecc71' },
-  { id: 'cursed_forest', name: 'Cursed Forest', icon: 'F', minLevel: 5, difficulty: 'Normal', color: '#f39c12' },
-  { id: 'dragon_lair', name: 'Dragon Lair', icon: 'D', minLevel: 20, difficulty: 'Hard', color: '#e74c3c' },
+  { id: 'beginner_cave', name: '초심자 동굴', icon: '동', minLevel: 1, difficulty: '쉬움', color: '#2ecc71' },
+  { id: 'cursed_forest', name: '저주받은 숲', icon: '숲', minLevel: 5, difficulty: '보통', color: '#f39c12' },
+  { id: 'dragon_lair', name: '용의 둥지', icon: '용', minLevel: 20, difficulty: '어려움', color: '#e74c3c' },
 ];
+
+const CLASS_LABELS = {
+  warrior: '전사',
+  mage: '마법사',
+  archer: '궁수',
+  paladin: '성기사',
+};
 
 export default function TownScreen({ navigation }) {
   const { player, chatMessages, sendChat, enterDungeon, notifications, dungeonState, connectionState } = useGame();
@@ -41,17 +48,17 @@ export default function TownScreen({ navigation }) {
 
   const handleEnterDungeon = (dungeon) => {
     if (player.level < dungeon.minLevel) {
-      Alert.alert('Level Locked', `This dungeon requires level ${dungeon.minLevel}.`);
+      Alert.alert('입장 제한', `이 던전은 레벨 ${dungeon.minLevel}부터 입장할 수 있습니다.`);
       return;
     }
 
     Alert.alert(
       dungeon.name,
-      `Difficulty: ${dungeon.difficulty}\nDo you want to enter now?`,
+      `난이도: ${dungeon.difficulty}\n지금 입장하시겠습니까?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: '취소', style: 'cancel' },
         {
-          text: 'Enter',
+          text: '입장',
           onPress: () => {
             enterDungeon(dungeon.id);
           },
@@ -80,22 +87,22 @@ export default function TownScreen({ navigation }) {
         <View>
           <Text style={styles.playerName}>{player.name}</Text>
           <Text style={styles.playerClass}>
-            {player.characterClass.toUpperCase()} Lv.{player.level}
+            {CLASS_LABELS[player.characterClass] || player.characterClass} Lv.{player.level}
           </Text>
         </View>
         <View style={styles.playerStats}>
           <Text style={styles.statHp}>HP {player.currentHp}/{player.stats.hp}</Text>
           <Text style={styles.statMp}>MP {player.currentMp}/{player.stats.mp}</Text>
-          <Text style={styles.statGold}>Gold {player.gold}</Text>
+          <Text style={styles.statGold}>골드 {player.gold}</Text>
           <Text style={styles.statConn}>
-            {connectionState === 'connected' ? 'Online' : connectionState === 'reconnecting' ? 'Reconnecting' : 'Offline'}
+            {connectionState === 'connected' ? '온라인' : connectionState === 'reconnecting' ? '재연결 중' : '오프라인'}
           </Text>
         </View>
         <TouchableOpacity
           onPress={() => navigation.navigate('Character')}
           style={styles.charBtn}
         >
-          <Text style={styles.charBtnText}>Me</Text>
+          <Text style={styles.charBtnText}>내 정보</Text>
         </TouchableOpacity>
       </View>
 
@@ -124,7 +131,7 @@ export default function TownScreen({ navigation }) {
             onPress={() => setActiveTab(tab)}
           >
             <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab === 'dungeon' ? 'Dungeons' : 'Chat'}
+              {tab === 'dungeon' ? '던전' : '채팅'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -132,7 +139,7 @@ export default function TownScreen({ navigation }) {
 
       {activeTab === 'dungeon' ? (
         <ScrollView style={styles.content}>
-          <Text style={styles.sectionTitle}>Available Dungeons</Text>
+          <Text style={styles.sectionTitle}>입장 가능한 던전</Text>
           {DUNGEONS.map((dungeon) => {
             const locked = player.level < dungeon.minLevel;
 
@@ -146,7 +153,7 @@ export default function TownScreen({ navigation }) {
                 <Text style={styles.dungeonEmoji}>{dungeon.icon}</Text>
                 <View style={styles.dungeonInfo}>
                   <Text style={styles.dungeonName}>{dungeon.name}</Text>
-                  <Text style={styles.dungeonMeta}>Minimum level: {dungeon.minLevel}</Text>
+                  <Text style={styles.dungeonMeta}>최소 레벨: {dungeon.minLevel}</Text>
                 </View>
                 <View
                   style={[
@@ -166,7 +173,7 @@ export default function TownScreen({ navigation }) {
         <View style={styles.chatContainer}>
           <ScrollView style={styles.chatMessages} contentContainerStyle={{ paddingBottom: 8 }}>
             {chatMessages.length === 0 && (
-              <Text style={styles.chatEmpty}>No messages yet.</Text>
+              <Text style={styles.chatEmpty}>아직 채팅이 없습니다.</Text>
             )}
             {chatMessages.map((message, index) => (
               <View key={`${message.ts}-${index}`} style={styles.chatBubble}>
@@ -180,13 +187,13 @@ export default function TownScreen({ navigation }) {
               style={styles.chatInput}
               value={chatInput}
               onChangeText={setChatInput}
-              placeholder="Type a message"
+              placeholder="메시지를 입력하세요"
               placeholderTextColor="#5a4a6a"
               onSubmitEditing={handleSendChat}
               returnKeyType="send"
             />
             <TouchableOpacity style={styles.sendBtn} onPress={handleSendChat}>
-              <Text style={styles.sendBtnText}>Send</Text>
+              <Text style={styles.sendBtnText}>전송</Text>
             </TouchableOpacity>
           </View>
         </View>
