@@ -21,8 +21,11 @@ const PLAYER_CACHE_PREFIX = 'rpg:player:';
 const ONLINE_PREFIX = 'rpg:online:';
 const LEADERBOARD_CACHE_KEY = 'rpg:leaderboard';
 const SESSION_PREFIX = 'rpg:session:';
+const CHAT_HISTORY_PREFIX = 'rpg:chat:';
 const ACCESS_EXPIRES_IN = '1h';
 const REFRESH_EXPIRES_IN = '14d';
+const CHAT_HISTORY_TTL_SECONDS = 60 * 60 * 24 * 3;
+const CHAT_HISTORY_LIMIT = 200;
 
 function sanitizePlayerName(name) {
   const fallback = `Hero_${Math.floor(Math.random() * 9999)}`;
@@ -225,6 +228,41 @@ class PersistentPlayerManager {
     await this.redis.del(`${ONLINE_PREFIX}${accountName}`);
   }
 
+  getChatHistoryKey(scope) {
+    return `${CHAT_HISTORY_PREFIX}${scope}`;
+  }
+
+  async appendChatMessage(scope, payload) {
+    if (!isRedisReady()) {
+      return;
+    }
+
+    const key = this.getChatHistoryKey(scope);
+    await this.redis.rPush(key, JSON.stringify(payload));
+    await this.redis.lTrim(key, -CHAT_HISTORY_LIMIT, -1);
+    await this.redis.expire(key, CHAT_HISTORY_TTL_SECONDS);
+  }
+
+  async getChatHistory(scope) {
+    if (!isRedisReady()) {
+      return [];
+    }
+
+    const rows = await this.redis.lRange(this.getChatHistoryKey(scope), 0, -1);
+    return rows.map((row) => {
+      try {
+        return JSON.parse(row);
+      } catch (error) {
+        return null;
+      }
+    }).filter(Boolean);
+  }
+
+  async emitChatHistory(socket, scope) {
+    const history = await this.getChatHistory(scope);
+    socket.emit('chat:history', { scope, messages: history });
+  }
+
   attachPlayerToSocket(socket, player) {
     // An account is limited to one live socket; older sessions are disconnected.
     const previousSocketId = this.accountSessions.get(player.accountName);
@@ -293,6 +331,30 @@ class PersistentPlayerManager {
     this.emitLoginSuccess(socket, player, { ...meta, accessToken, refreshToken });
   }
 
+  async restorePlayerLocation(socket, player) {
+    // Rejoin the last dungeon after reconnect so temporary network drops do not force
+    // a town reset. If the room cannot be recreated, fall back to town safely.
+    if (!player.dungeonId) {
+      await this.emitChatHistory(socket, 'global');
+      return;
+    }
+
+    const dungeonId = player.dungeonId;
+    const joinResult = this.gameManager.joinRoom(dungeonId, player, socket);
+    if (!joinResult?.ok) {
+      this.resetPlayerToTown(player);
+      await this.persistPlayer(player, { immediate: true });
+      await this.emitChatHistory(socket, 'global');
+      return;
+    }
+
+    socket.emit('dungeon:entered', {
+      dungeonId,
+      room: this.gameManager.getRoomInfo(dungeonId),
+    });
+    await this.emitChatHistory(socket, `dungeon:${dungeonId}`);
+  }
+
   async persistNow(player) {
     await prisma.player.update({
       where: { id: player.id },
@@ -353,7 +415,6 @@ class PersistentPlayerManager {
 
     if (player.dungeonId) {
       this.gameManager.leaveRoom(player.dungeonId, socket.id);
-      this.resetPlayerToTown(player);
     }
 
     player.socketId = null;
@@ -414,6 +475,7 @@ class PersistentPlayerManager {
     const player = this.hydratePlayer(account.player, account.accountName, socket.id);
     this.attachPlayerToSocket(socket, player);
     await this.issueSession(socket, player, { created: true, restored: false });
+    await this.restorePlayerLocation(socket, player);
   }
 
   async onAccountLogin(socket, { accountName, password }) {
@@ -426,10 +488,6 @@ class PersistentPlayerManager {
     }
 
     const player = loaded.player;
-    if (player.dungeonId) {
-      this.resetPlayerToTown(player);
-      await this.persistPlayer(player, { immediate: true });
-    }
 
     await prisma.account.update({
       where: { id: loaded.account.id },
@@ -438,6 +496,7 @@ class PersistentPlayerManager {
 
     this.attachPlayerToSocket(socket, player);
     await this.issueSession(socket, player, { created: false, restored: true });
+    await this.restorePlayerLocation(socket, player);
   }
 
   async onRefreshSession(socket, { refreshToken }) {
@@ -475,10 +534,6 @@ class PersistentPlayerManager {
       }
 
       const player = loaded.player;
-      if (player.dungeonId) {
-        this.resetPlayerToTown(player);
-        await this.persistPlayer(player, { immediate: true });
-      }
 
       await prisma.account.update({
         where: { id: loaded.account.id },
@@ -487,6 +542,7 @@ class PersistentPlayerManager {
 
       this.attachPlayerToSocket(socket, player);
       await this.issueSession(socket, player, { created: false, restored: true });
+      await this.restorePlayerLocation(socket, player);
     } catch (error) {
       socket.emit('auth:sessionExpired', { msg: '세션이 만료되었습니다. 다시 로그인해 주세요.' });
     }
@@ -675,10 +731,12 @@ class PersistentPlayerManager {
 
     const payload = { playerId: player.id, name: player.name, message: trimmed, ts: Date.now() };
     if (player.dungeonId) {
+      await this.appendChatMessage(`dungeon:${player.dungeonId}`, payload);
       this.io.to(player.dungeonId).emit('chat:message', payload);
       return;
     }
 
+    await this.appendChatMessage('global', payload);
     this.io.emit('chat:message', payload);
   }
 
@@ -708,6 +766,7 @@ class PersistentPlayerManager {
     player.dungeonId = dungeonId;
     await this.persistPlayer(player);
     socket.emit('dungeon:entered', { dungeonId, room: this.gameManager.getRoomInfo(dungeonId) });
+    await this.emitChatHistory(socket, `dungeon:${dungeonId}`);
     this.io.to(dungeonId).emit('dungeon:playerJoined', { playerId: player.id, name: player.name });
   }
 
@@ -723,6 +782,7 @@ class PersistentPlayerManager {
     this.resetPlayerToTown(player);
     await this.persistPlayer(player);
     socket.emit('dungeon:left', {});
+    await this.emitChatHistory(socket, 'global');
     this.io.to(dungeonId).emit('dungeon:playerLeft', { playerId: player.id });
   }
 

@@ -26,6 +26,7 @@ export function GameProvider({ children }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [dungeonState, setDungeonState] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const chatScopeRef = useRef('global');
 
   useEffect(() => {
     // Mirror the latest player snapshot into a ref for async event handlers.
@@ -142,6 +143,7 @@ export function GameProvider({ children }) {
     socket.on('player:loginSuccess', (data) => {
       const { restored, accessToken, refreshToken, ...safeData } = data;
       setAuthLoading(false);
+      chatScopeRef.current = safeData.dungeonId ? `dungeon:${safeData.dungeonId}` : 'global';
       setPlayer(safeData);
       persistSession({ accessToken, refreshToken });
 
@@ -273,6 +275,7 @@ export function GameProvider({ children }) {
     });
 
     socket.on('dungeon:entered', ({ dungeonId, room }) => {
+      chatScopeRef.current = `dungeon:${dungeonId}`;
       // Only switch screens after the server confirms room entry.
       setDungeonState({ dungeonId, ...room });
       setPlayer((prev) => (prev ? { ...prev, dungeonId } : prev));
@@ -280,6 +283,7 @@ export function GameProvider({ children }) {
     });
 
     socket.on('dungeon:left', () => {
+      chatScopeRef.current = 'global';
       setDungeonState(null);
       setPlayer((prev) => (prev ? { ...prev, dungeonId: null, isDead: false } : prev));
       addLog('던전에서 나왔습니다.', 'info');
@@ -321,6 +325,14 @@ export function GameProvider({ children }) {
       setChatMessages((prev) => [...prev, data].slice(-100));
     });
 
+    socket.on('chat:history', ({ scope, messages }) => {
+      if (scope !== chatScopeRef.current) {
+        return;
+      }
+
+      setChatMessages(messages || []);
+    });
+
     manager.on('reconnect_attempt', (attempt) => {
       setConnectionState('reconnecting');
       setReconnectAttempts(attempt);
@@ -357,6 +369,7 @@ export function GameProvider({ children }) {
 
   const login = useCallback((accountName, password) => {
     setAuthLoading(true);
+    chatScopeRef.current = 'global';
     emit('account:login', { accountName, password });
   }, [emit]);
 
