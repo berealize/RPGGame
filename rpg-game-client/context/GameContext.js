@@ -4,7 +4,8 @@ import io from 'socket.io-client';
 
 const GameContext = createContext(null);
 
-const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL || 'http://localhost:3000';
+//const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL || 'http://localhost:3000';
+const SERVER_URL = "http://221.162.168.243:3000";
 const AUTH_STORAGE_KEY = 'rpg.auth.session';
 
 export function GameProvider({ children }) {
