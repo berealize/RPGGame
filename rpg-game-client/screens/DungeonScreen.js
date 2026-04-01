@@ -1,19 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useGame } from '../context/GameContext';
 
 export default function DungeonScreen({ navigation }) {
-  const { player, dungeonState, combatLog, attack, useSkill, leaveDungeon } = useGame();
+  const { player, dungeonState, combatLog, chatMessages, sendChat, attack, useSkill, leaveDungeon } = useGame();
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [battleMode, setBattleMode] = useState('manual');
   const [clock, setClock] = useState(Date.now());
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [seenChatCount, setSeenChatCount] = useState(0);
   const autoActionLockRef = useRef(false);
 
   useEffect(() => {
@@ -140,6 +145,12 @@ export default function DungeonScreen({ navigation }) {
     return () => clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    if (chatOpen) {
+      setSeenChatCount(chatMessages.length);
+    }
+  }, [chatMessages.length, chatOpen]);
+
   if (!player) {
     return null;
   }
@@ -163,6 +174,22 @@ export default function DungeonScreen({ navigation }) {
       const cooldownEnd = player.skillCooldowns?.[skill.id] || 0;
       return player.currentMp >= skill.mpCost && cooldownEnd <= clock;
     });
+  const unreadChatCount = Math.max(0, chatMessages.length - seenChatCount);
+
+  const openChat = () => {
+    setSeenChatCount(chatMessages.length);
+    setChatOpen(true);
+  };
+
+  const handleSendChat = () => {
+    if (!chatInput.trim()) {
+      return;
+    }
+
+    sendChat(chatInput.trim());
+    setChatInput('');
+    setSeenChatCount(chatMessages.length + 1);
+  };
 
   return (
     <View style={styles.container}>
@@ -302,6 +329,55 @@ export default function DungeonScreen({ navigation }) {
           ))}
         </ScrollView>
       </View>
+
+      <TouchableOpacity style={styles.chatFab} onPress={openChat}>
+        <Text style={styles.chatFabIcon}>Chat</Text>
+        {unreadChatCount > 0 && (
+          <View style={styles.chatBadge}>
+            <Text style={styles.chatBadgeText}>{unreadChatCount > 9 ? '9+' : unreadChatCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <Modal visible={chatOpen} animationType="slide" transparent onRequestClose={() => setChatOpen(false)}>
+        <View style={styles.chatModalOverlay}>
+          <View style={styles.chatModal}>
+            <View style={styles.chatModalHeader}>
+              <Text style={styles.chatModalTitle}>Party Chat</Text>
+              <TouchableOpacity onPress={() => setChatOpen(false)}>
+                <Text style={styles.chatModalClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.chatModalMessages} contentContainerStyle={styles.chatModalMessagesContent}>
+              {chatMessages.length === 0 && (
+                <Text style={styles.chatEmpty}>No messages yet.</Text>
+              )}
+              {chatMessages.map((message, index) => (
+                <View key={`${message.ts}-${index}`} style={styles.chatBubble}>
+                  <Text style={styles.chatName}>{message.name}</Text>
+                  <Text style={styles.chatMsg}>{message.message}</Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.chatInputRow}>
+              <TextInput
+                style={styles.chatInput}
+                value={chatInput}
+                onChangeText={setChatInput}
+                placeholder="Type a message"
+                placeholderTextColor="#5a4a6a"
+                onSubmitEditing={handleSendChat}
+                returnKeyType="send"
+              />
+              <TouchableOpacity style={styles.sendBtn} onPress={handleSendChat}>
+                <Text style={styles.sendBtnText}>Send</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -430,4 +506,75 @@ const styles = StyleSheet.create({
   skillName: { color: '#c0a0ff', fontWeight: 'bold', fontSize: 12 },
   skillMp: { color: '#3498db', fontSize: 11, marginTop: 3 },
   skillCooldown: { color: '#f39c12', fontSize: 10, marginTop: 3 },
+  chatFab: {
+    position: 'absolute',
+    right: 18,
+    bottom: 180,
+    backgroundColor: '#2a1a4e',
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#4a2a7e',
+  },
+  chatFabIcon: { color: '#ffffff', fontWeight: 'bold' },
+  chatBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#e74c3c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  chatBadgeText: { color: '#ffffff', fontSize: 11, fontWeight: 'bold' },
+  chatModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  chatModal: {
+    backgroundColor: '#12091f',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    maxHeight: '60%',
+    paddingTop: 14,
+  },
+  chatModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a1a4e',
+  },
+  chatModalTitle: { color: '#ffd700', fontWeight: 'bold', fontSize: 16 },
+  chatModalClose: { color: '#c0a0ff', fontWeight: 'bold' },
+  chatModalMessages: { paddingHorizontal: 12 },
+  chatModalMessagesContent: { paddingVertical: 12 },
+  chatBubble: { backgroundColor: '#1a0a2e', borderRadius: 8, padding: 10, marginBottom: 8 },
+  chatName: { color: '#a070d0', fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
+  chatMsg: { color: '#e0d0f0', fontSize: 14 },
+  chatInputRow: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#2a1a4e',
+  },
+  chatInput: {
+    flex: 1,
+    backgroundColor: '#1a0a2e',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    color: '#fff',
+    borderWidth: 1,
+    borderColor: '#3a2a5e',
+  },
+  sendBtn: { backgroundColor: '#ffd700', borderRadius: 8, padding: 12 },
+  sendBtnText: { color: '#1a0a2e', fontWeight: 'bold' },
 });
