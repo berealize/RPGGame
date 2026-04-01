@@ -82,6 +82,7 @@ class PersistentPlayerManager {
   }
 
   handleConnection(socket) {
+    // Connection setup is centralized here so auth and gameplay handlers stay together.
     socket.on('account:register', this.wrapAsync(socket, this.onRegister));
     socket.on('account:login', this.wrapAsync(socket, this.onAccountLogin));
     socket.on('auth:refresh', this.wrapAsync(socket, this.onRefreshSession));
@@ -110,6 +111,7 @@ class PersistentPlayerManager {
   }
 
   getDefaultSkills(characterClass) {
+    // Skills are regenerated from class so old player rows do not need duplicated skill payloads.
     const skills = {
       warrior: [
         { id: 'slash', name: '베기', mpCost: 10, multiplier: 1.5, cooldownMs: 2500, type: 'physical' },
@@ -133,6 +135,7 @@ class PersistentPlayerManager {
   }
 
   recalcStats(player) {
+    // Base stats, level growth, and equipment bonuses all converge in one recalculation path.
     const base = BASE_CLASSES[player.characterClass] || BASE_CLASSES.warrior;
     player.stats = { ...base };
 
@@ -206,6 +209,7 @@ class PersistentPlayerManager {
       return;
     }
 
+    // Redis stores a short-lived snapshot for fast reads and online presence checks.
     await this.redis.set(`${PLAYER_CACHE_PREFIX}${player.accountName}`, JSON.stringify(this.getSafePlayer(player)), {
       EX: 3600,
     });
@@ -222,6 +226,7 @@ class PersistentPlayerManager {
   }
 
   attachPlayerToSocket(socket, player) {
+    // An account is limited to one live socket; older sessions are disconnected.
     const previousSocketId = this.accountSessions.get(player.accountName);
     if (previousSocketId && previousSocketId !== socket.id) {
       this.players.delete(previousSocketId);
@@ -297,6 +302,7 @@ class PersistentPlayerManager {
   }
 
   persistPlayer(player, { immediate = false } = {}) {
+    // Debounced writes collapse bursts of movement/combat updates into fewer DB writes.
     const existingTimer = this.persistTimers.get(player.id);
     if (existingTimer) {
       clearTimeout(existingTimer);
@@ -339,6 +345,7 @@ class PersistentPlayerManager {
   }
 
   async handleDisconnect(socket) {
+    // Disconnect tears down transient room state but keeps persistent character progress.
     const player = this.players.get(socket.id);
     if (!player) {
       return;
@@ -363,6 +370,7 @@ class PersistentPlayerManager {
   }
 
   async onRegister(socket, { accountName, password, name, characterClass }) {
+    // Account creation also creates the first player row because gameplay depends on both.
     const safeAccountName = sanitizeAccountName(accountName);
     if (safeAccountName.length < ACCOUNT_MIN_LENGTH) {
       socket.emit('error', { msg: `계정 ID는 ${ACCOUNT_MIN_LENGTH}자 이상 ${ACCOUNT_MAX_LENGTH}자 이하로 입력해야 합니다.` });
@@ -433,6 +441,7 @@ class PersistentPlayerManager {
   }
 
   async onRefreshSession(socket, { refreshToken }) {
+    // Refresh rotation extends the Redis-backed session window for active returning players.
     try {
       const payload = jwt.verify(
         String(refreshToken || ''),
@@ -515,6 +524,7 @@ class PersistentPlayerManager {
   }
 
   async onAttack(socket, { targetId }) {
+    // Basic attacks use the same authoritative combat pipeline as skill attacks.
     const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
@@ -547,6 +557,7 @@ class PersistentPlayerManager {
   }
 
   async onUseSkill(socket, { skillId, targetId }) {
+    // MP and cooldown must be validated here so client auto-battle cannot bypass rules.
     const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
@@ -672,6 +683,7 @@ class PersistentPlayerManager {
   }
 
   async onEnterDungeon(socket, { dungeonId }) {
+    // GameManager owns room membership, while this manager persists the player snapshot.
     const player = this.getPlayerBySocket(socket);
     if (!player) {
       return;
@@ -725,6 +737,7 @@ class PersistentPlayerManager {
   }
 
   checkLevelUp(player) {
+    // A large reward can trigger multiple level-ups in one pass.
     while (player.exp >= player.expToNext) {
       player.exp -= player.expToNext;
       player.level += 1;

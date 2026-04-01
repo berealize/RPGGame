@@ -56,6 +56,7 @@ export default function CharacterScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('stats');
 
   useEffect(() => {
+    // This screen depends on an authenticated player snapshot from context.
     if (!player) {
       navigation.replace('Login');
     }
@@ -66,6 +67,7 @@ export default function CharacterScreen({ navigation }) {
   }
 
   const handleEquip = (item) => {
+    // Show the stat delta first because equipping immediately changes derived stats.
     const bonuses = Object.entries(item.statBonus || {})
       .map(([key, value]) => `${STAT_LABELS[key] || key}: +${value}`)
       .join('\n');
@@ -103,6 +105,7 @@ export default function CharacterScreen({ navigation }) {
         ))}
       </View>
 
+      {/* Tabs keep the long character payload readable without one oversized panel. */}
       <ScrollView style={styles.content}>
         {activeTab === 'stats' && (
           <View>

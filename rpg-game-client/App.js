@@ -14,6 +14,7 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   return (
     <GameProvider>
+      {/* The provider owns auth/session/gameplay state while the stack handles screen routing. */}
       <NavigationContainer>
         <StatusBar style="light" />
         <Stack.Navigator

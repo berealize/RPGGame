@@ -31,12 +31,14 @@ export default function TownScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('dungeon');
 
   useEffect(() => {
+    // If the session is lost, protect the screen by returning to login.
     if (!player) {
       navigation.replace('Login');
     }
   }, [navigation, player]);
 
   useEffect(() => {
+    // Navigate only after shared dungeon state exists, not when the request is sent.
     if (dungeonState) {
       navigation.navigate('Dungeon');
     }
@@ -47,6 +49,7 @@ export default function TownScreen({ navigation }) {
   }
 
   const handleEnterDungeon = (dungeon) => {
+    // Local validation reduces obvious invalid join attempts before they hit the server.
     if (player.level < dungeon.minLevel) {
       Alert.alert('입장 제한', `이 던전은 레벨 ${dungeon.minLevel}부터 입장할 수 있습니다.`);
       return;
@@ -72,6 +75,7 @@ export default function TownScreen({ navigation }) {
       return;
     }
 
+    // Clear the input immediately so repeated sends stay responsive.
     sendChat(chatInput.trim());
     setChatInput('');
   };
@@ -111,6 +115,7 @@ export default function TownScreen({ navigation }) {
         <Text style={styles.expText}>EXP {player.exp}/{player.expToNext}</Text>
       </View>
 
+      {/* Town notifications summarize recent server-side events. */}
       {notifications.map((notification) => (
         <View
           key={notification.id}

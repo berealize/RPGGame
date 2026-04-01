@@ -9,6 +9,8 @@ const SERVER_URL = "http://221.162.168.243:3000";
 const AUTH_STORAGE_KEY = 'rpg.auth.session';
 
 export function GameProvider({ children }) {
+  // Socket, timers, and persisted session tokens live in refs so socket callbacks
+  // can read the latest values without re-registering listeners every render.
   const socketRef = useRef(null);
   const notificationTimersRef = useRef(new Set());
   const playerRef = useRef(null);
@@ -26,10 +28,12 @@ export function GameProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
+    // Mirror the latest player snapshot into a ref for async event handlers.
     playerRef.current = player;
   }, [player]);
 
   const persistSession = useCallback(async (session) => {
+    // Refresh-based login restoration depends on these tokens surviving app restarts.
     sessionRef.current = session;
     if (session) {
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
@@ -40,6 +44,7 @@ export function GameProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    // Load any stored session before the socket attempts auth refresh on connect.
     AsyncStorage.getItem(AUTH_STORAGE_KEY)
       .then((stored) => {
         if (stored) {
@@ -57,11 +62,13 @@ export function GameProvider({ children }) {
       return;
     }
 
+    // Reconnects always start by exchanging the refresh token for a fresh access token.
     socketRef.current?.emit('auth:refresh', { refreshToken: sessionRef.current.refreshToken });
     setAuthLoading(true);
   }, [connected]);
 
   const addLog = useCallback((msg, type = 'info') => {
+    // Limit the combat log to recent entries so long sessions do not grow unbounded.
     const entry = {
       id: `${Date.now()}-${Math.random()}`,
       msg,
@@ -72,6 +79,7 @@ export function GameProvider({ children }) {
   }, []);
 
   const addNotification = useCallback((message, type = 'info') => {
+    // Notification timers are tracked so they can be cleaned up on provider unmount.
     const id = `${Date.now()}-${Math.random()}`;
     const timeoutId = setTimeout(() => {
       setNotifications((prev) => prev.filter((item) => item.id !== id));
@@ -83,6 +91,8 @@ export function GameProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    // Socket.io handles transport and reconnects; game-specific recovery happens
+    // through the auth:refresh event and the shared provider state below.
     const socket = io(SERVER_URL, {
       transports: ['websocket'],
       autoConnect: true,
@@ -135,6 +145,7 @@ export function GameProvider({ children }) {
       setPlayer(safeData);
       persistSession({ accessToken, refreshToken });
 
+      // Fresh login resets transient UI state, while restored sessions keep more context.
       if (!restored) {
         setCombatLog([]);
         setChatMessages([]);
@@ -218,6 +229,7 @@ export function GameProvider({ children }) {
           return prev;
         }
 
+        // Monster HP comes from the server and dead targets are removed immediately.
         const monsters = prev.monsters
           .map((monster) => (monster.id === targetId ? { ...monster, hp: targetCurrentHp } : monster))
           .filter((monster) => monster.hp > 0);
@@ -261,6 +273,7 @@ export function GameProvider({ children }) {
     });
 
     socket.on('dungeon:entered', ({ dungeonId, room }) => {
+      // Only switch screens after the server confirms room entry.
       setDungeonState({ dungeonId, ...room });
       setPlayer((prev) => (prev ? { ...prev, dungeonId } : prev));
       addLog(`${room.name}에 입장했습니다.`, 'info');
@@ -323,6 +336,7 @@ export function GameProvider({ children }) {
     });
 
     return () => {
+      // Clear timers and listeners together so hot reloads do not duplicate handlers.
       manager.removeAllListeners();
       socket.removeAllListeners();
       notificationTimersRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -336,6 +350,7 @@ export function GameProvider({ children }) {
   }, []);
 
   const register = useCallback((accountName, password, name, characterClass) => {
+    // Auth actions share one emit wrapper so socket access stays centralized.
     setAuthLoading(true);
     emit('account:register', { accountName, password, name, characterClass });
   }, [emit]);

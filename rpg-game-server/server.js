@@ -7,6 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Express serves lightweight REST endpoints while Socket.io handles realtime gameplay.
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] }
@@ -19,6 +20,7 @@ const gameManager = new GameManager(io);
 const playerManager = new PlayerManager(io, gameManager);
 
 // REST API
+// Health and leaderboard stay on HTTP; combat and chat stay on the socket layer.
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 app.get('/leaderboard', async (req, res) => {
   try {

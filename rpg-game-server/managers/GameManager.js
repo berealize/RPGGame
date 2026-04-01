@@ -37,6 +37,7 @@ class GameManager {
   }
 
   joinRoom(dungeonId, player, socket) {
+    // Rooms are created lazily so idle dungeons do not keep timers or monster state alive.
     const config = this.getDungeonConfig(dungeonId);
     if (!config) {
       return { ok: false, code: 'NOT_FOUND' };
@@ -115,6 +116,7 @@ class GameManager {
       return;
     }
 
+    // Every wave rebuilds the room monster list and restarts the room AI timer.
     this.clearSpawnTimer(dungeonId);
 
     const count = Math.min(3 + room.wave, 8);
@@ -164,6 +166,7 @@ class GameManager {
       return;
     }
 
+    // Only living players can be targeted; defeated players wait for revive handling.
     const alivePlayers = [...room.players.values()].filter(
       (player) => !player.isDead && player.currentHp > 0
     );
@@ -222,6 +225,7 @@ class GameManager {
   }
 
   processAttack(attacker, targetId, skillId) {
+    // Combat is resolved on the server so HP, rewards, and progression stay authoritative.
     if (!attacker.dungeonId) {
       return null;
     }
@@ -276,6 +280,7 @@ class GameManager {
   }
 
   handleWaveClear(dungeonId, room) {
+    // Clearing a wave either schedules the boss or starts the next wave after a short pause.
     this.clearSpawnTimer(dungeonId);
 
     if (!room.bossSpawned && room.wave >= 3) {
@@ -332,6 +337,7 @@ class GameManager {
   }
 
   generateRewards(monster) {
+    // Small reward variance keeps repeated farming from feeling completely deterministic.
     const expMultiplier = 1 + Math.random() * 0.2;
     const rewards = {
       exp: Math.floor(monster.exp * expMultiplier),

@@ -12,6 +12,7 @@ function getRedisClient() {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   });
 
+  // Ready/error is tracked separately so callers can skip cache features when Redis is down.
   redisClient.on('error', (error) => {
     redisReady = false;
     console.error('[Redis error]', error.message);
@@ -30,6 +31,7 @@ function getRedisClient() {
 }
 
 function isRedisReady() {
+  // Call sites use this as a lightweight feature flag around cache/session operations.
   return redisReady;
 }
 

@@ -28,6 +28,7 @@ export default function DungeonScreen({ navigation }) {
   }, [navigation, player]);
 
   const selectedMonster = useMemo(
+    // Resolve the selected id once so UI text and actions refer to the same target.
     () => (dungeonState?.monsters || []).find((monster) => monster.id === selectedTarget) || null,
     [dungeonState?.monsters, selectedTarget]
   );
@@ -37,6 +38,7 @@ export default function DungeonScreen({ navigation }) {
       return;
     }
 
+    // Drop stale target ids when a monster dies or the wave changes.
     const exists = (dungeonState?.monsters || []).some((monster) => monster.id === selectedTarget);
     if (!exists) {
       setSelectedTarget(null);
@@ -58,6 +60,7 @@ export default function DungeonScreen({ navigation }) {
       return undefined;
     }
 
+    // Auto battle prefers the strongest usable skill and falls back to a basic attack.
     const intervalId = setInterval(() => {
       const monsters = dungeonState.monsters || [];
       const target = monsters.find((monster) => monster.id === selectedTarget) || monsters[0];
@@ -118,6 +121,7 @@ export default function DungeonScreen({ navigation }) {
   };
 
   const handleSkill = (skill) => {
+    // Mirror server validation locally so the player gets instant feedback on bad casts.
     if (!selectedTarget) {
       Alert.alert('대상 선택', '스킬을 사용할 몬스터를 먼저 선택하세요.');
       return;
@@ -138,6 +142,7 @@ export default function DungeonScreen({ navigation }) {
   };
 
   useEffect(() => {
+    // Cooldown labels need a lightweight clock even when no new socket event arrives.
     const intervalId = setInterval(() => {
       setClock(Date.now());
     }, 250);
@@ -177,6 +182,7 @@ export default function DungeonScreen({ navigation }) {
   const unreadChatCount = Math.max(0, chatMessages.length - seenChatCount);
 
   const openChat = () => {
+    // Opening the modal marks the current message count as already seen.
     setSeenChatCount(chatMessages.length);
     setChatOpen(true);
   };
@@ -186,6 +192,7 @@ export default function DungeonScreen({ navigation }) {
       return;
     }
 
+    // Align unread tracking with the message that is about to be appended locally.
     sendChat(chatInput.trim());
     setChatInput('');
     setSeenChatCount(chatMessages.length + 1);
@@ -264,6 +271,7 @@ export default function DungeonScreen({ navigation }) {
         </ScrollView>
       </View>
 
+      {/* The provider already caps combat history, so the screen can render it directly. */}
       <ScrollView style={styles.combatLog} showsVerticalScrollIndicator={false}>
         {combatLog.slice(0, 15).map((log) => (
           <Text key={log.id} style={[styles.logEntry, styles[`log_${log.type}`] || styles.log_info]}>

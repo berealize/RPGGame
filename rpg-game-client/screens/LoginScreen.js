@@ -26,17 +26,20 @@ export default function LoginScreen({ navigation }) {
   const [selectedClass, setSelectedClass] = useState('warrior');
 
   useEffect(() => {
+    // Replace prevents navigating back to login after a successful auth flow.
     if (player) {
       navigation.replace('Town');
     }
   }, [navigation, player]);
 
   const handleLogin = () => {
+    // Avoid sending auth requests while disconnected or with incomplete credentials.
     if (!connected || !accountName.trim() || !password.trim()) {
       return;
     }
 
     if (mode === 'create') {
+      // Registration needs both account credentials and the initial character setup.
       if (!name.trim()) {
         return;
       }
@@ -62,6 +65,7 @@ export default function LoginScreen({ navigation }) {
         <Text style={styles.titleSub}>멀티플레이 던전 RPG</Text>
       </View>
 
+      {/* Login and account creation share the same layout; mode toggles extra fields. */}
       <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
         <View style={styles.modeTabs}>
           <TouchableOpacity
