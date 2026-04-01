@@ -1,16 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
 
 const GameContext = createContext(null);
 
 const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL || 'http://localhost:3000';
+const AUTH_STORAGE_KEY = 'rpg.auth.session';
 
 export function GameProvider({ children }) {
   const socketRef = useRef(null);
   const notificationTimersRef = useRef(new Set());
   const playerRef = useRef(null);
-  const authRef = useRef(null);
-  const authReadyRef = useRef(false);
+  const sessionRef = useRef(null);
+  const sessionLoadedRef = useRef(false);
 
   const [connected, setConnected] = useState(false);
   const [connectionState, setConnectionState] = useState('connecting');
@@ -25,6 +27,38 @@ export function GameProvider({ children }) {
   useEffect(() => {
     playerRef.current = player;
   }, [player]);
+
+  const persistSession = useCallback(async (session) => {
+    sessionRef.current = session;
+    if (session) {
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+      return;
+    }
+
+    await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(AUTH_STORAGE_KEY)
+      .then((stored) => {
+        if (stored) {
+          sessionRef.current = JSON.parse(stored);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        sessionLoadedRef.current = true;
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!sessionLoadedRef.current || !connected || !sessionRef.current?.refreshToken) {
+      return;
+    }
+
+    socketRef.current?.emit('auth:refresh', { refreshToken: sessionRef.current.refreshToken });
+    setAuthLoading(true);
+  }, [connected]);
 
   const addLog = useCallback((msg, type = 'info') => {
     const entry = {
@@ -65,10 +99,7 @@ export function GameProvider({ children }) {
       setConnectionState('connected');
       setReconnectAttempts(0);
 
-      if (authReadyRef.current && authRef.current) {
-        socket.emit('account:login', authRef.current);
-        setAuthLoading(true);
-      } else {
+      if (sessionLoadedRef.current && !sessionRef.current?.refreshToken) {
         addNotification('Connected to server.', 'success');
       }
     });
@@ -92,18 +123,16 @@ export function GameProvider({ children }) {
       addNotification(msg || 'An unknown error occurred.', 'error');
 
       if ((msg || '') === 'Invalid account ID or password.') {
-        authReadyRef.current = false;
-        authRef.current = null;
         setPlayer(null);
         setDungeonState(null);
       }
     });
 
     socket.on('player:loginSuccess', (data) => {
-      const { restored, ...safeData } = data;
-      authReadyRef.current = true;
+      const { restored, accessToken, refreshToken, ...safeData } = data;
       setAuthLoading(false);
       setPlayer(safeData);
+      persistSession({ accessToken, refreshToken });
 
       if (!restored) {
         setCombatLog([]);
@@ -117,6 +146,15 @@ export function GameProvider({ children }) {
         }
         addNotification(`Session restored for ${safeData.name}.`, 'success');
       }
+    });
+
+    socket.on('auth:sessionExpired', ({ msg }) => {
+      setAuthLoading(false);
+      setPlayer(null);
+      setDungeonState(null);
+      setCombatLog([]);
+      persistSession(null);
+      addNotification(msg || 'Session expired. Please log in again.', 'error');
     });
 
     socket.on('player:levelUp', ({ level, stats, player: updatedPlayer }) => {
@@ -290,20 +328,18 @@ export function GameProvider({ children }) {
       notificationTimersRef.current.clear();
       socket.disconnect();
     };
-  }, [addLog, addNotification]);
+  }, [addLog, addNotification, persistSession]);
 
   const emit = useCallback((event, payload) => {
     socketRef.current?.emit(event, payload);
   }, []);
 
   const register = useCallback((accountName, password, name, characterClass) => {
-    authRef.current = { accountName, password };
     setAuthLoading(true);
     emit('account:register', { accountName, password, name, characterClass });
   }, [emit]);
 
   const login = useCallback((accountName, password) => {
-    authRef.current = { accountName, password };
     setAuthLoading(true);
     emit('account:login', { accountName, password });
   }, [emit]);

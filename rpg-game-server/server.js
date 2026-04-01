@@ -13,14 +13,21 @@ const io = new Server(httpServer, {
 });
 
 const GameManager = require('./managers/GameManager');
-const PlayerManager = require('./managers/PlayerManager');
+const PlayerManager = require('./managers/PersistentPlayerManager');
 
 const gameManager = new GameManager(io);
 const playerManager = new PlayerManager(io, gameManager);
 
 // REST API
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
-app.get('/leaderboard', (req, res) => res.json(playerManager.getLeaderboard()));
+app.get('/leaderboard', async (req, res) => {
+  try {
+    res.json(await playerManager.getLeaderboard());
+  } catch (error) {
+    console.error('[Leaderboard error]', error);
+    res.status(500).json({ error: 'Failed to load leaderboard.' });
+  }
+});
 
 // Socket.io 연결
 io.on('connection', (socket) => {
@@ -29,7 +36,9 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`[해제] 소켓 ID: ${socket.id}`);
-    playerManager.handleDisconnect(socket);
+    Promise.resolve(playerManager.handleDisconnect(socket)).catch((error) => {
+      console.error('[Disconnect error]', error);
+    });
   });
 });
 

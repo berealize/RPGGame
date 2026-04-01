@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id          String   @id @default(cuid())
+  accountName String   @unique
+  passwordHash String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastLoginAt DateTime?
+  player      Player?
+}
+
+model Player {
+  id             String   @id @default(cuid())
+  accountId      String   @unique
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name           String
+  characterClass String
+  level          Int      @default(1)
+  exp            Int      @default(0)
+  expToNext      Int      @default(100)
+  gold           Int      @default(50)
+  positionX      Int      @default(0)
+  positionY      Int      @default(0)
+  positionMap    String   @default("town")
+  currentHp      Int
+  currentMp      Int
+  dungeonId      String?
+  isDead         Boolean  @default(false)
+  inventory      Json     @default("[]")
+  equipment      Json     @default("{\"weapon\":null,\"armor\":null,\"accessory\":null}")
+  buffs          Json     @default("[]")
+  skillCooldowns Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
