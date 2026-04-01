@@ -19,9 +19,9 @@ const ITEMS = {
 };
 
 const DUNGEONS = {
-  beginner_cave: { name: '초심자 동굴', minLevel: 1, maxPlayers: 4, monsters: ['slime', 'goblin'], bossMonster: 'orc' },
-  cursed_forest: { name: '저주받은 숲', minLevel: 5, maxPlayers: 4, monsters: ['goblin', 'skeleton'], bossMonster: 'dragon' },
-  dragon_lair: { name: '용의 둥지', minLevel: 20, maxPlayers: 6, monsters: ['orc', 'skeleton'], bossMonster: 'dragon' },
+  beginner_cave: { name: '초심자 동굴', minLevel: 1, maxPlayers: 4, monsters: ['slime', 'goblin'], bossMonster: 'orc', statMultiplier: 1 },
+  cursed_forest: { name: '저주받은 숲', minLevel: 5, maxPlayers: 4, monsters: ['goblin', 'skeleton'], bossMonster: 'dragon', statMultiplier: 1.1 },
+  dragon_lair: { name: '용의 둥지', minLevel: 20, maxPlayers: 6, monsters: ['orc', 'skeleton'], bossMonster: 'dragon', statMultiplier: 1.2 },
 };
 
 class GameManager {
@@ -34,6 +34,33 @@ class GameManager {
 
   getDungeonConfig(dungeonId) {
     return DUNGEONS[dungeonId] || null;
+  }
+
+  getMonsterScaling(room) {
+    // Difficulty and wave both increase monster stats in 10% steps.
+    const dungeonScale = room.config.statMultiplier || 1;
+    const waveScale = 1 + Math.max(0, room.wave - 1) * 0.1;
+    return dungeonScale * waveScale;
+  }
+
+  createScaledMonster(base, monsterType, room) {
+    const statScale = this.getMonsterScaling(room);
+
+    return {
+      ...base,
+      id: uuidv4(),
+      type: monsterType,
+      currentHp: Math.max(1, Math.floor(base.hp * statScale)),
+      hp: Math.max(1, Math.floor(base.hp * statScale)),
+      atk: Math.max(1, Math.floor(base.atk * statScale)),
+      def: Math.max(0, Math.floor(base.def * statScale)),
+      exp: Math.max(1, Math.floor(base.exp * statScale)),
+      gold: Math.max(1, Math.floor(base.gold * statScale)),
+      position: {
+        x: Math.floor(Math.random() * 20),
+        y: Math.floor(Math.random() * 20),
+      },
+    };
   }
 
   joinRoom(dungeonId, player, socket) {
@@ -125,18 +152,7 @@ class GameManager {
     for (let index = 0; index < count; index += 1) {
       const monsterType = room.config.monsters[Math.floor(Math.random() * room.config.monsters.length)];
       const base = MONSTERS[monsterType];
-      const monster = {
-        ...base,
-        id: uuidv4(),
-        type: monsterType,
-        currentHp: base.hp * room.wave,
-        hp: base.hp * room.wave,
-        atk: Math.floor(base.atk * (1 + (room.wave - 1) * 0.2)),
-        position: {
-          x: Math.floor(Math.random() * 20),
-          y: Math.floor(Math.random() * 20),
-        },
-      };
+      const monster = this.createScaledMonster(base, monsterType, room);
 
       room.monsters.push(monster);
     }
@@ -179,9 +195,11 @@ class GameManager {
       .filter((monster) => monster.currentHp > 0)
       .forEach((monster) => {
         const target = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+        const mitigatedDefense = Math.floor((target.stats?.def || 0) * 0.45);
+        const minimumDamage = Math.max(1, Math.floor(monster.atk * 0.2));
         const damage = Math.max(
-          1,
-          monster.atk - (target.stats?.def || 0) + Math.floor(Math.random() * 5 - 2)
+          minimumDamage,
+          monster.atk - mitigatedDefense + Math.floor(Math.random() * 5 - 2)
         );
 
         target.currentHp = Math.max(0, target.currentHp - damage);
@@ -285,14 +303,18 @@ class GameManager {
 
     if (!room.bossSpawned && room.wave >= 3) {
       const bossBase = MONSTERS[room.config.bossMonster];
+      const statScale = this.getMonsterScaling(room);
       const boss = {
         ...bossBase,
         id: uuidv4(),
         type: room.config.bossMonster,
         isBoss: true,
-        currentHp: bossBase.hp * 5,
-        hp: bossBase.hp * 5,
-        atk: bossBase.atk * 2,
+        currentHp: Math.max(1, Math.floor(bossBase.hp * 5 * statScale)),
+        hp: Math.max(1, Math.floor(bossBase.hp * 5 * statScale)),
+        atk: Math.max(1, Math.floor(bossBase.atk * 2 * statScale)),
+        def: Math.max(0, Math.floor(bossBase.def * statScale)),
+        exp: Math.max(1, Math.floor(bossBase.exp * statScale)),
+        gold: Math.max(1, Math.floor(bossBase.gold * statScale)),
         position: { x: 10, y: 10 },
       };
 
