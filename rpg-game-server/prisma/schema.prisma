@@ -41,3 +41,40 @@ model Player {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+model MonsterTemplate {
+  id         String             @id @default(cuid())
+  key        String             @unique
+  name       String
+  lootTable  Json               @default("[]")
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  levelStats MonsterLevelStat[]
+}
+
+model MonsterLevelStat {
+  id                String          @id @default(cuid())
+  monsterTemplateId String
+  monsterTemplate   MonsterTemplate @relation(fields: [monsterTemplateId], references: [id], onDelete: Cascade)
+  level             Int
+  hp                Int
+  atk               Int
+  def               Int
+  critRate          Float           @default(0)
+  critDamage        Float           @default(1.5)
+  keenRate          Float           @default(0)
+  keenDamage        Float           @default(2)
+  dodgeRate         Float           @default(0)
+  accuracyRate      Float           @default(1)
+  penetration       Float           @default(0)
+  blockRate         Float           @default(0)
+  blockValue        Float           @default(0)
+  attackSpeed       Float           @default(1)
+  extraStats        Json            @default("{}")
+  exp               Int
+  gold              Int
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([monsterTemplateId, level])
+}
