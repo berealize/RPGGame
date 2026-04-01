@@ -119,7 +119,7 @@ eas build --platform android --profile preview
 ---
 
 ## 🛠️ 확장 아이디어
-- MongoDB/Redis 연동으로 데이터 영속화
+- PostgreSQL/Redis 연동으로 데이터 영속화
 - JWT 기반 인증 시스템
 - 상점 시스템 (골드로 아이템 구매)
 - PvP 아레나
