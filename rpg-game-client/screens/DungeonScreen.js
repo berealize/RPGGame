@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -12,6 +12,9 @@ import { useGame } from '../context/GameContext';
 export default function DungeonScreen({ navigation }) {
   const { player, dungeonState, combatLog, attack, useSkill, leaveDungeon } = useGame();
   const [selectedTarget, setSelectedTarget] = useState(null);
+  const [battleMode, setBattleMode] = useState('manual');
+  const [clock, setClock] = useState(Date.now());
+  const autoActionLockRef = useRef(false);
 
   useEffect(() => {
     if (!player) {
@@ -35,6 +38,56 @@ export default function DungeonScreen({ navigation }) {
     }
   }, [dungeonState?.monsters, selectedTarget]);
 
+  useEffect(() => {
+    if (battleMode !== 'auto') {
+      return;
+    }
+
+    if (!selectedTarget && dungeonState?.monsters?.length) {
+      setSelectedTarget(dungeonState.monsters[0].id);
+    }
+  }, [battleMode, dungeonState?.monsters, selectedTarget]);
+
+  useEffect(() => {
+    if (battleMode !== 'auto' || !player || !dungeonState || player.isDead) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      const monsters = dungeonState.monsters || [];
+      const target = monsters.find((monster) => monster.id === selectedTarget) || monsters[0];
+      if (!target || autoActionLockRef.current) {
+        return;
+      }
+
+      const availableSkill = [...(player.skills || [])]
+        .sort((left, right) => {
+          const leftScore = (left.multiplier || 1) * (left.hits || 1);
+          const rightScore = (right.multiplier || 1) * (right.hits || 1);
+          return rightScore - leftScore;
+        })
+        .find((skill) => {
+          const cooldownEnd = player.skillCooldowns?.[skill.id] || 0;
+          return player.currentMp >= skill.mpCost && cooldownEnd <= Date.now();
+        });
+
+      autoActionLockRef.current = true;
+      setSelectedTarget(target.id);
+
+      if (availableSkill) {
+        useSkill(availableSkill.id, target.id);
+      } else {
+        attack(target.id);
+      }
+
+      setTimeout(() => {
+        autoActionLockRef.current = false;
+      }, 700);
+    }, 1200);
+
+    return () => clearInterval(intervalId);
+  }, [attack, battleMode, dungeonState, player, selectedTarget, useSkill]);
+
   const handleLeave = () => {
     Alert.alert('Leave Dungeon', 'Do you want to leave this dungeon?', [
       { text: 'Cancel', style: 'cancel' },
@@ -42,6 +95,7 @@ export default function DungeonScreen({ navigation }) {
         text: 'Leave',
         style: 'destructive',
         onPress: () => {
+          setBattleMode('manual');
           leaveDungeon();
           navigation.goBack();
         },
@@ -69,8 +123,22 @@ export default function DungeonScreen({ navigation }) {
       return;
     }
 
+    const cooldownLeft = Math.max(0, (player.skillCooldowns?.[skill.id] || 0) - Date.now());
+    if (cooldownLeft > 0) {
+      Alert.alert('Skill Cooling Down', `${skill.name} is available in ${Math.ceil(cooldownLeft / 1000)}s.`);
+      return;
+    }
+
     useSkill(skill.id, selectedTarget);
   };
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setClock(Date.now());
+    }, 250);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   if (!player) {
     return null;
@@ -89,6 +157,12 @@ export default function DungeonScreen({ navigation }) {
 
   const hpPercent = Math.max(0, (player.currentHp / player.stats.hp) * 100);
   const mpPercent = Math.max(0, (player.currentMp / player.stats.mp) * 100);
+  const autoSkill = [...(player.skills || [])]
+    .sort((left, right) => ((right.multiplier || 1) * (right.hits || 1)) - ((left.multiplier || 1) * (left.hits || 1)))
+    .find((skill) => {
+      const cooldownEnd = player.skillCooldowns?.[skill.id] || 0;
+      return player.currentMp >= skill.mpCost && cooldownEnd <= clock;
+    });
 
   return (
     <View style={styles.container}>
@@ -175,20 +249,56 @@ export default function DungeonScreen({ navigation }) {
       </ScrollView>
 
       <View style={styles.actionArea}>
+        <View style={styles.modeRow}>
+          <TouchableOpacity
+            style={[styles.modeBtn, battleMode === 'manual' && styles.modeBtnActive]}
+            onPress={() => setBattleMode('manual')}
+          >
+            <Text style={[styles.modeBtnText, battleMode === 'manual' && styles.modeBtnTextActive]}>
+              Manual
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeBtn, battleMode === 'auto' && styles.modeBtnAutoActive]}
+            onPress={() => setBattleMode('auto')}
+          >
+            <Text style={[styles.modeBtnText, battleMode === 'auto' && styles.modeBtnTextActive]}>
+              Auto
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.autoHint}>
+          {battleMode === 'auto'
+            ? `Auto battle: ${autoSkill ? `${autoSkill.name} priority` : 'basic attack fallback'}`
+            : 'Manual battle: choose attacks yourself'}
+        </Text>
         <TouchableOpacity style={styles.attackBtn} onPress={handleAttack} disabled={player.isDead}>
           <Text style={styles.attackBtnText}>Basic Attack</Text>
         </TouchableOpacity>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.skillRow}>
           {(player.skills || []).map((skill) => (
-            <TouchableOpacity
-              key={skill.id}
-              style={[styles.skillBtn, player.currentMp < skill.mpCost && styles.skillBtnDisabled]}
-              onPress={() => handleSkill(skill)}
-              disabled={player.currentMp < skill.mpCost || player.isDead}
-            >
-              <Text style={styles.skillName}>{skill.name}</Text>
-              <Text style={styles.skillMp}>MP {skill.mpCost}</Text>
-            </TouchableOpacity>
+            (() => {
+              const cooldownLeft = Math.max(0, (player.skillCooldowns?.[skill.id] || 0) - clock);
+              const isOnCooldown = cooldownLeft > 0;
+
+              return (
+                <TouchableOpacity
+                  key={skill.id}
+                  style={[
+                    styles.skillBtn,
+                    (player.currentMp < skill.mpCost || isOnCooldown) && styles.skillBtnDisabled,
+                  ]}
+                  onPress={() => handleSkill(skill)}
+                  disabled={player.currentMp < skill.mpCost || isOnCooldown || player.isDead}
+                >
+                  <Text style={styles.skillName}>{skill.name}</Text>
+                  <Text style={styles.skillMp}>MP {skill.mpCost}</Text>
+                  <Text style={styles.skillCooldown}>
+                    {isOnCooldown ? `CD ${Math.ceil(cooldownLeft / 1000)}s` : `CD ${(skill.cooldownMs || 0) / 1000}s`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })()
           ))}
         </ScrollView>
       </View>
@@ -282,6 +392,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#2a1a4e',
   },
+  modeRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  modeBtn: {
+    flex: 1,
+    backgroundColor: '#24143f',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4a2a7e',
+  },
+  modeBtnActive: { backgroundColor: '#3d245f', borderColor: '#c0a0ff' },
+  modeBtnAutoActive: { backgroundColor: '#244f37', borderColor: '#2ecc71' },
+  modeBtnText: { color: '#9a7aba', fontWeight: 'bold' },
+  modeBtnTextActive: { color: '#ffffff' },
+  autoHint: { color: '#8a7a9a', fontSize: 12, marginBottom: 10, textAlign: 'center' },
   attackBtn: {
     backgroundColor: '#c0392b',
     borderRadius: 10,
@@ -304,4 +429,5 @@ const styles = StyleSheet.create({
   skillBtnDisabled: { opacity: 0.5 },
   skillName: { color: '#c0a0ff', fontWeight: 'bold', fontSize: 12 },
   skillMp: { color: '#3498db', fontSize: 11, marginTop: 3 },
+  skillCooldown: { color: '#f39c12', fontSize: 10, marginTop: 3 },
 });

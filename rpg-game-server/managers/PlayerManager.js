@@ -149,6 +149,7 @@ class PlayerManager {
       currentHp: baseStats.hp,
       currentMp: baseStats.mp,
       skills: this.getDefaultSkills(safeClass),
+      skillCooldowns: {},
       inventory: [],
       equipment: { weapon: null, armor: null, accessory: null },
       buffs: [],
@@ -281,15 +282,31 @@ class PlayerManager {
       return;
     }
 
+    const now = Date.now();
+    const nextAvailableAt = player.skillCooldowns?.[skillId] || 0;
+    if (nextAvailableAt > now) {
+      const remainingMs = nextAvailableAt - now;
+      socket.emit('error', { msg: `${skill.name} is on cooldown for ${Math.ceil(remainingMs / 1000)}s.` });
+      return;
+    }
+
     if (player.currentMp < skill.mpCost) {
       socket.emit('error', { msg: 'Not enough MP.' });
       return;
     }
 
     player.currentMp -= skill.mpCost;
+    player.skillCooldowns = {
+      ...player.skillCooldowns,
+      [skillId]: now + (skill.cooldownMs || 0),
+    };
     const result = this.gameManager.processAttack(player, targetId, skillId);
     if (!result) {
       player.currentMp += skill.mpCost;
+      player.skillCooldowns = {
+        ...player.skillCooldowns,
+        [skillId]: nextAvailableAt,
+      };
       socket.emit('error', { msg: 'The skill target is invalid.' });
       return;
     }
@@ -297,6 +314,7 @@ class PlayerManager {
     this.io.to(player.dungeonId).emit('combat:skillResult', {
       caster: player.id,
       skillId,
+      cooldownMs: skill.cooldownMs || 0,
       ...result,
     });
     socket.emit('player:mpUpdated', {
@@ -474,20 +492,20 @@ class PlayerManager {
   getDefaultSkills(characterClass) {
     const skills = {
       warrior: [
-        { id: 'slash', name: 'Slash', mpCost: 10, multiplier: 1.5, type: 'physical' },
-        { id: 'shield_bash', name: 'Shield Bash', mpCost: 15, multiplier: 1.2, type: 'physical', stun: true },
+        { id: 'slash', name: 'Slash', mpCost: 10, multiplier: 1.5, cooldownMs: 2500, type: 'physical' },
+        { id: 'shield_bash', name: 'Shield Bash', mpCost: 15, multiplier: 1.2, cooldownMs: 5000, type: 'physical', stun: true },
       ],
       mage: [
-        { id: 'fireball', name: 'Fireball', mpCost: 20, multiplier: 2, type: 'magic' },
-        { id: 'ice_lance', name: 'Ice Lance', mpCost: 25, multiplier: 1.8, type: 'magic', slow: true },
+        { id: 'fireball', name: 'Fireball', mpCost: 20, multiplier: 2, cooldownMs: 3000, type: 'magic' },
+        { id: 'ice_lance', name: 'Ice Lance', mpCost: 25, multiplier: 1.8, cooldownMs: 4500, type: 'magic', slow: true },
       ],
       archer: [
-        { id: 'piercing_shot', name: 'Piercing Shot', mpCost: 15, multiplier: 1.7, type: 'physical' },
-        { id: 'multi_shot', name: 'Multi Shot', mpCost: 20, multiplier: 1.2, hits: 3, type: 'physical' },
+        { id: 'piercing_shot', name: 'Piercing Shot', mpCost: 15, multiplier: 1.7, cooldownMs: 3000, type: 'physical' },
+        { id: 'multi_shot', name: 'Multi Shot', mpCost: 20, multiplier: 1.2, cooldownMs: 5000, hits: 3, type: 'physical' },
       ],
       paladin: [
-        { id: 'holy_strike', name: 'Holy Strike', mpCost: 15, multiplier: 1.6, type: 'holy' },
-        { id: 'divine_shield', name: 'Divine Shield', mpCost: 30, multiplier: 0, type: 'buff', buffType: 'shield' },
+        { id: 'holy_strike', name: 'Holy Strike', mpCost: 15, multiplier: 1.6, cooldownMs: 3000, type: 'holy' },
+        { id: 'divine_shield', name: 'Divine Shield', mpCost: 30, multiplier: 0, cooldownMs: 8000, type: 'buff', buffType: 'shield' },
       ],
     };
 

@@ -191,6 +191,7 @@ export default function CharacterScreen({ navigation }) {
                 <View style={styles.skillMeta}>
                   <Text style={styles.skillTag}>MP {skill.mpCost}</Text>
                   <Text style={styles.skillTag}>x{skill.multiplier}</Text>
+                  <Text style={styles.skillTag}>CD {(skill.cooldownMs || 0) / 1000}s</Text>
                   {skill.hits ? <Text style={styles.skillTag}>Hits {skill.hits}</Text> : null}
                   <Text style={styles.skillTag}>{skill.type}</Text>
                 </View>
